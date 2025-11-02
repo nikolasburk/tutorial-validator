@@ -1,0 +1,669 @@
+# yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
+
+metadata:
+  title: "LiveStore Todo App Tutorial"
+  description: "Tutorial for building a todo app with React, Vite & Tailwind using LiveStore"
+  version: "1.0.0"
+
+prerequisites:
+  commands:
+    - "bunx"
+    - "pnpm"
+    - "cd"
+    - "mkdir"
+    - "touch"
+  envVars: []
+
+steps:
+  # Chapter 1: Set up starter project
+  - id: "ch1-create-starter-project"
+    type: "run-command"
+    stepNumber: 1
+    description: "Create starter project using @livestore/cli"
+    command: "pnpm dlx @livestore/cli@dev create --example tutorial-starter livestore-todo-app"
+
+  - id: "ch1-navigate-to-project"
+    type: "run-command"
+    stepNumber: 2
+    description: "Navigate to the project directory"
+    command: "cd livestore-todo-app"
+
+  - id: "ch1-validate-project-structure"
+    type: "validate"
+    stepNumber: 3
+    description: "Verify project directory exists"
+    workingDirectory: "livestore-todo-app"
+    validation:
+      type: "file-contents"
+      path: "package.json"
+      check:
+        exists: true
+
+  # Chapter 2: Deploy to Cloudflare
+  - id: "ch2-install-cloudflare-plugin"
+    type: "run-command"
+    stepNumber: 4
+    description: "Install Cloudflare Vite plugin"
+    workingDirectory: "livestore-todo-app"
+    command: "pnpm add -D @cloudflare/vite-plugin"
+
+  - id: "ch2-update-vite-config-cloudflare"
+    type: "change-file"
+    stepNumber: 5
+    description: "Add Cloudflare plugin to vite.config.ts"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "vite.config.ts"
+      searchPattern: "import tailwindcss from '@tailwindcss/vite'"
+      action: "after"
+      content: "import { cloudflare } from '@cloudflare/vite-plugin'"
+
+  - id: "ch2-add-cloudflare-plugin-to-config"
+    type: "change-file"
+    stepNumber: 6
+    description: "Add cloudflare() to plugins array in vite.config.ts"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "vite.config.ts"
+      searchPattern: "tailwindcss\\(\\),"
+      action: "after"
+      content: "    cloudflare(),"
+
+  - id: "ch2-install-wrangler"
+    type: "run-command"
+    stepNumber: 7
+    description: "Install Wrangler CLI"
+    workingDirectory: "livestore-todo-app"
+    command: "pnpm add wrangler -D"
+
+  - id: "ch2-create-wrangler-toml"
+    type: "run-command"
+    stepNumber: 8
+    description: "Create wrangler.toml file"
+    workingDirectory: "livestore-todo-app"
+    command: "touch wrangler.toml"
+
+  - id: "ch2-write-wrangler-toml"
+    type: "change-file"
+    stepNumber: 9
+    description: "Add configuration to wrangler.toml"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "replace"
+      path: "wrangler.toml"
+      contents: |-
+        name = "livestore-todo-app"
+        compatibility_date = "2024-10-28"
+
+        [observability]
+        enabled = true
+
+  - id: "ch2-add-deploy-script"
+    type: "change-file"
+    stepNumber: 10
+    description: "Add deploy script to package.json"
+    change:
+      type: "context"
+      path: "package.json"
+      searchPattern: "\"preview\": \"vite preview\""
+      action: "after"
+      content: "    \"deploy\": \"pnpm run build && wrangler deploy\","
+
+  # Chapter 3: Read and write todos via LiveStore
+  - id: "ch3-install-livestore-deps"
+    type: "run-command"
+    stepNumber: 11
+    description: "Install LiveStore dependencies"
+        workingDirectory: "livestore-todo-app"
+    command: "pnpm add @livestore/livestore@0.4.0-dev.14 @livestore/wa-sqlite@0.4.0-dev.14 @livestore/adapter-web@0.4.0-dev.14 @livestore/react@0.4.0-dev.14 @livestore/peer-deps@0.4.0-dev.14"
+
+  - id: "ch3-create-livestore-dir"
+    type: "run-command"
+    stepNumber: 12
+    description: "Create livestore directory"
+        workingDirectory: "livestore-todo-app"
+    command: "mkdir -p src/livestore"
+
+  - id: "ch3-create-schema-file"
+    type: "run-command"
+    stepNumber: 13
+    description: "Create schema.ts file"
+        workingDirectory: "livestore-todo-app"
+    command: "touch src/livestore/schema.ts"
+
+  - id: "ch3-write-schema"
+    type: "change-file"
+    stepNumber: 14
+    description: "Write LiveStore schema definition"
+    change:
+      type: "replace"
+      path: "src/livestore/schema.ts"
+      contents: |-
+        import { Events, makeSchema, Schema, State } from '@livestore/livestore'
+
+        export const tables = {
+          todos: State.SQLite.table({
+            name: 'todos',
+            columns: {
+              id: State.SQLite.integer({ primaryKey: true }),
+              text: State.SQLite.text({ default: '' }),
+            },
+          })
+        }
+
+        export const events = {
+          todoCreated: Events.synced({
+            name: 'v1.TodoCreated',
+            schema: Schema.Struct({ id: Schema.Number, text: Schema.String }),
+          }),
+          todoDeleted: Events.synced({
+            name: 'v1.TodoDeleted',
+            schema: Schema.Struct({ id: Schema.Number }),
+          }),
+        }
+
+        const materializers = State.SQLite.materializers(events, {
+          'v1.TodoCreated': ({ id, text }) => tables.todos.insert({ id, text }),
+          'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),
+        })
+
+        const state = State.SQLite.makeState({ tables, materializers })
+        export const schema = makeSchema({ events, state })
+
+  - id: "ch3-create-worker-file"
+    type: "run-command"
+    stepNumber: 15
+    description: "Create livestore.worker.ts file"
+        workingDirectory: "livestore-todo-app"
+    command: "touch src/livestore/livestore.worker.ts"
+
+  - id: "ch3-write-worker"
+    type: "change-file"
+    stepNumber: 16
+    description: "Write LiveStore worker code"
+    change:
+      type: "replace"
+      path: "src/livestore/livestore.worker.ts"
+      contents: |-
+        import { makeWorker } from '@livestore/adapter-web/worker'
+
+        import { schema } from './schema.ts'
+
+        makeWorker({ schema })
+
+  - id: "ch3-update-main-tsx"
+    type: "change-file"
+    stepNumber: 17
+    description: "Update main.tsx to use LiveStore provider"
+    change:
+      type: "replace"
+      path: "src/main.tsx"
+      contents: |-
+        import { createRoot } from 'react-dom/client'
+        import './index.css'
+        import App from './App.tsx'
+        import { makePersistedAdapter } from '@livestore/adapter-web'
+        import { LiveStoreProvider } from '@livestore/react'
+        import { schema } from './livestore/schema.ts'
+        import LiveStoreWorker from './livestore/livestore.worker.ts?worker'
+        import LiveStoreSharedWorker from '@livestore/adapter-web/shared-worker?sharedworker'
+        import { unstable_batchedUpdates as batchUpdates } from 'react-dom'
+
+        const adapter = makePersistedAdapter({
+          storage: { type: 'opfs' },
+          worker: LiveStoreWorker,
+          sharedWorker: LiveStoreSharedWorker,
+        })
+
+        createRoot(document.getElementById('root')!).render(
+          <LiveStoreProvider
+            schema={schema}
+            adapter={adapter}
+            renderLoading={(_) => <div>Loading LiveStore ({_.stage})...</div>}
+            storeId="todo-db-tutorial"
+            batchUpdates={batchUpdates}
+          >
+            <App />
+          </LiveStoreProvider>
+        )
+
+  - id: "ch3-update-vite-config-optimizedeps"
+    type: "change-file"
+    stepNumber: 18
+    description: "Add optimizeDeps configuration to vite.config.ts"
+    change:
+      type: "context"
+      path: "vite.config.ts"
+      searchPattern: "cloudflare\\(\\),"
+      action: "after"
+      content: "  ],\n  optimizeDeps: {\n    exclude: ['@livestore/wa-sqlite'],\n  },"
+
+  - id: "ch3-update-app-tsx"
+    type: "change-file"
+    stepNumber: 19
+    description: "Update App.tsx to use LiveStore for todos"
+    change:
+      type: "replace"
+      path: "src/App.tsx"
+      contents: |-
+        import { useState } from 'react'
+        import { useStore } from '@livestore/react'
+        import { tables, events } from './livestore/schema'
+        import { queryDb } from '@livestore/livestore'
+
+
+        function App() {
+
+          const { store } = useStore()
+
+          const todos$ = queryDb(() => tables.todos.select())
+          const todos = store.useQuery(todos$)
+
+          const [input, setInput] = useState('')
+
+          const addTodo = () => {
+            if (input.trim()) {
+              store.commit(
+                events.todoCreated({ id: Date.now(), text: input }),
+              )
+              setInput('')
+            }
+          }
+
+          const deleteTodo = (id: number) => {
+            store.commit(
+              events.todoDeleted({ id }),
+            )
+          }
+
+          const handleKeyDown = (e: React.KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              addTodo()
+            }
+          }
+
+          return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+              <div className="w-full max-w-lg">
+                <h1 className="text-5xl font-bold text-gray-800 text-center mb-12">
+                  Todo List
+                </h1>
+
+                <div className="flex gap-3 mb-8">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Enter a todo..."
+                    className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={addTodo}
+                    className="px-6 py-2 text-sm font-medium text-white bg-blue-500 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {todos.map(todo => (
+                    <div
+                      key={todo.id}
+                      className="flex items-center justify-between bg-white px-4 py-3 rounded shadow-sm"
+                    >
+                      <span className="text-gray-700">{todo.text}</span>
+                      <button
+                        onClick={() => deleteTodo(todo.id)}
+                        className="px-4 py-1 text-sm font-medium text-white bg-red-500 rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {todos.length === 0 && (
+                  <p className="text-center text-gray-400 mt-8">
+                    No todos yet. Add one above!
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        }
+
+        export default App
+
+  - id: "ch3-install-devtools"
+    type: "run-command"
+    stepNumber: 20
+    description: "Install LiveStore DevTools package"
+        workingDirectory: "livestore-todo-app"
+    command: "pnpm add @livestore/devtools-vite@0.4.0-dev.14"
+
+  - id: "ch3-add-devtools-plugin"
+    type: "change-file"
+    stepNumber: 21
+    description: "Add livestoreDevtoolsPlugin to vite.config.ts"
+    change:
+      type: "context"
+      path: "vite.config.ts"
+      searchPattern: "import { cloudflare } from '@cloudflare/vite-plugin'"
+      action: "after"
+      content: "import { livestoreDevtoolsPlugin } from '@livestore/devtools-vite'"
+
+  - id: "ch3-add-devtools-to-plugins"
+    type: "change-file"
+    stepNumber: 22
+    description: "Add devtools plugin to plugins array"
+    change:
+      type: "context"
+      path: "vite.config.ts"
+      searchPattern: "cloudflare\\(\\),"
+      action: "after"
+      content: "    livestoreDevtoolsPlugin({ schemaPath: './src/livestore/schema.ts' }),"
+
+  # Chapter 4: Sync data to Cloudflare
+  - id: "ch4-install-sync-cf"
+    type: "run-command"
+    stepNumber: 23
+    description: "Install @livestore/sync-cf package"
+        workingDirectory: "livestore-todo-app"
+    command: "pnpm add @livestore/sync-cf@0.4.0-dev.14"
+
+  - id: "ch4-create-sync-dir"
+    type: "run-command"
+    stepNumber: 24
+    description: "Create sync directory"
+        workingDirectory: "livestore-todo-app"
+    command: "mkdir -p src/sync"
+
+  - id: "ch4-create-client-ws"
+    type: "run-command"
+    stepNumber: 25
+    description: "Create client-ws.ts file"
+        workingDirectory: "livestore-todo-app"
+    command: "touch src/sync/client-ws.ts"
+
+  - id: "ch4-write-client-ws"
+    type: "change-file"
+    stepNumber: 26
+    description: "Write sync backend client-ws.ts code"
+    change:
+      type: "replace"
+      path: "src/sync/client-ws.ts"
+      contents: |-
+        import { makeDurableObject } from '@livestore/sync-cf/cf-worker'
+        import type { CfTypes } from '@livestore/sync-cf/cf-worker'
+        import * as SyncBackend from '@livestore/sync-cf/cf-worker'
+
+        export class SyncBackendDO extends makeDurableObject({
+          onPush: async (message, context) => {
+            console.log('client-ws.ts: onPush', message, context)
+          },
+          onPull: async (message, context) => {
+            console.log('client-ws.ts: onPull', message, context)
+          },
+        }) {}
+
+        export default {
+          async fetch(request: CfTypes.Request, _env: SyncBackend.Env, ctx: CfTypes.ExecutionContext) {
+            const searchParams = SyncBackend.matchSyncRequest(request)
+            console.log('client-ws.ts: fetch in  with searchParams', searchParams)
+            if (searchParams !== undefined) {
+              return SyncBackend.handleSyncRequest({
+                request,
+                searchParams,
+                ctx,
+                syncBackendBinding: 'SYNC_BACKEND_DO',
+              })
+            }
+
+            return new Response('Not Found', { status: 404 })
+          },
+        }
+
+  - id: "ch4-update-worker-sync"
+    type: "change-file"
+    stepNumber: 27
+    description: "Update livestore.worker.ts to include sync configuration"
+    change:
+      type: "context"
+      path: "src/livestore/livestore.worker.ts"
+      searchPattern: "import { makeWorker } from '@livestore/adapter-web/worker'"
+      action: "after"
+      content: "import { makeWsSync } from '@livestore/sync-cf/client'"
+
+  - id: "ch4-update-worker-sync-config"
+    type: "change-file"
+    stepNumber: 28
+    description: "Add sync configuration to makeWorker call"
+    change:
+      type: "context"
+      path: "src/livestore/livestore.worker.ts"
+      searchPattern: "makeWorker\\(\\{ schema \\}\\)"
+      action: "replace"
+      content: "makeWorker({ \n  schema,\n  sync: {\n    backend: makeWsSync({ url: `${location.origin}/sync` }),\n  }\n})"
+
+  - id: "ch4-update-wrangler-toml"
+    type: "change-file"
+    stepNumber: 29
+    description: "Update wrangler.toml with sync backend configuration"
+    change:
+      type: "replace"
+      path: "wrangler.toml"
+      contents: |-
+        name = "livestore-todo-app"
+        compatibility_date = "2024-10-28"
+        main = "./src/sync/client-ws.ts"
+        compatibility_flags = [
+          "nodejs_compat",
+        ]
+
+        [observability]
+        enabled = true
+
+        [[durable_objects.bindings]]
+        name = "SYNC_BACKEND_DO"
+        class_name = "SyncBackendDO"
+
+        [[migrations]]
+        tag = "v1"
+        new_sqlite_classes = ["SyncBackendDO"]
+
+  # Chapter 5: Expand business logic
+  - id: "ch5-update-schema-completed"
+    stepNumber: 30
+    workingDirectory: "livestore-todo-app"
+    description: "Add completed column to todos table in schema"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "text: State.SQLite.text\\(\\{ default: '' \\}\\),"
+      action: "after"
+      content: "      completed: State.SQLite.boolean({ default: false }),"
+
+  - id: "ch5-add-completed-events"
+    type: "change-file"
+    stepNumber: 31
+    description: "Add todoCompleted and todoUncompleted events to schema"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "todoDeleted: Events.synced\\(\\{"
+      action: "after"
+      content: "  todoCompleted: Events.synced({\n    name: 'v1.TodoCompleted',\n    schema: Schema.Struct({ id: Schema.Number }),\n  }),\n  todoUncompleted: Events.synced({\n    name: 'v1.TodoUncompleted',\n    schema: Schema.Struct({ id: Schema.Number }),\n  }),"
+
+  - id: "ch5-add-completed-materializers"
+    stepNumber: 32
+    workingDirectory: "livestore-todo-app"
+    description: "Add materializers for todoCompleted and todoUncompleted events"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "'v1.TodoDeleted': \\(\\{ id \\}\\) => tables.todos.delete\\(\\)\\.where\\(\\{ id: id \\}\\),"
+      action: "after"
+      content: "\n  'v1.TodoCompleted': ({ id }) => tables.todos.update({ completed: true }).where({ id }),\n  'v1.TodoUncompleted': ({ id }) => tables.todos.update({ completed: false }).where({ id }),"
+
+  - id: "ch5-update-app-toggle"
+    type: "change-file"
+    stepNumber: 33
+    description: "Add toggleTodo function and checkbox UI to App.tsx"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "const deleteTodo = \\(id: number\\) => \\{"
+      action: "after"
+      content: "\n\n  const toggleTodo = (id: number, completed: boolean) => {\n    store.commit(\n      completed ? events.todoUncompleted({ id }) : events.todoCompleted({ id })\n    )\n  }"
+
+  - id: "ch5-update-app-ui-checkbox"
+    stepNumber: 34
+    workingDirectory: "livestore-todo-app"
+    description: "Update todo item UI to include checkbox"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "<div\n                      key=\\{todo.id\\}\n                      className=\"flex items-center justify-between bg-white px-4 py-3 rounded shadow-sm\"\n                    >"
+      action: "replace"
+      content: "<div\n                      key={todo.id}\n                      className=\"flex items-center justify-between bg-white px-4 py-3 rounded shadow-sm\"\n                    >\n                      <div className=\"flex items-center gap-3 flex-1\">\n                        <input\n                          type=\"checkbox\"\n                          checked={todo.completed}\n                          onChange={() => toggleTodo(todo.id, todo.completed)}\n                          className=\"w-4 h-4 cursor-pointer\"\n                        />\n                        <span className={`text-gray-700 ${todo.completed ? 'line-through text-gray-400' : ''}`}>\n                          {todo.text}\n                        </span>\n                      </div>"
+
+  # Chapter 6: Persist UI state
+  - id: "ch6-update-schema-ui-state"
+    type: "change-file"
+    stepNumber: 35
+    description: "Add SessionIdSymbol import and Filter schema to schema.ts"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "import \\{ Events, makeSchema, Schema, State \\} from '@livestore/livestore'"
+      action: "replace"
+      content: "import { Events, makeSchema, Schema, State, SessionIdSymbol } from '@livestore/livestore'\n\nexport const Filter = Schema.Literal('All', 'Active', 'Completed')\nexport type Filter = typeof Filter.Type"
+
+  - id: "ch6-add-ui-state-table"
+    stepNumber: 36
+    workingDirectory: "livestore-todo-app"
+    description: "Add uiState clientDocument to tables"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "    \\},\n  \\},\\}"
+      action: "replace"
+      content: "    },\n  }),\n  uiState: State.SQLite.clientDocument({\n    name: 'uiState',\n    schema: Schema.Struct({ input: Schema.String, filter: Filter }),\n    default: { id: SessionIdSymbol, value: { input: '', filter: 'All' } },\n  }),\n}"
+
+  - id: "ch6-add-ui-state-event"
+    type: "change-file"
+    stepNumber: 37
+    description: "Add uiStateSet event to events"
+    workingDirectory: "livestore-todo-app"
+    change:
+      type: "context"
+      path: "src/livestore/schema.ts"
+      searchPattern: "  todoUncompleted: Events.synced\\(\\{"
+      action: "after"
+      content: "  }),\n  uiStateSet: tables.uiState.set,"
+
+  - id: "ch6-update-app-ui-state"
+    stepNumber: 38
+    workingDirectory: "livestore-todo-app"
+    description: "Replace useState with LiveStore queries for input and filter"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "import \\{ tables, events \\} from './livestore/schema'"
+      action: "replace"
+      content: "import { tables, events, Filter } from './livestore/schema'"
+
+  - id: "ch6-update-app-remove-usestate"
+    stepNumber: 39
+    workingDirectory: "livestore-todo-app"
+    description: "Remove useState import and replace state management"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "import \\{ useState \\} from 'react'"
+      action: "replace"
+      content: "import { useStore } from '@livestore/react'"
+
+  - id: "ch6-add-ui-state-query"
+    stepNumber: 40
+    workingDirectory: "livestore-todo-app"
+    description: "Add uiState query and update functions"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "const todos = store.useQuery\\(todos\\$\\)\n\n          const \\[input, setInput\\] = useState\\(''\\)"
+      action: "replace"
+      content: "const todos = store.useQuery(todos$)\n\n          const uiState$ = queryDb(() => tables.uiState.get())\n          const { input, filter } = store.useQuery(uiState$)\n          \n          const updatedInput = (input: string) => store.commit(events.uiStateSet({ input }))\n          const updatedFilter = (filter: Filter) => store.commit(events.uiStateSet({ filter }))"
+
+  - id: "ch6-update-input-handlers"
+    stepNumber: 41
+    workingDirectory: "livestore-todo-app"
+    description: "Update input onChange and addTodo to use updatedInput"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "onChange=\\{\\(e\\) => setInput\\(e.target.value\\)\\}"
+      action: "replace"
+      content: "onChange={(e) => updatedInput(e.target.value)}"
+
+  - id: "ch6-update-add-todo-clear"
+    stepNumber: 42
+    workingDirectory: "livestore-todo-app"
+    description: "Update addTodo to use updatedInput instead of setInput"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "setInput\\(''\\)"
+      action: "replace"
+      content: "updatedInput('')"
+
+  - id: "ch6-add-filter-tabs-ui"
+    stepNumber: 43
+    workingDirectory: "livestore-todo-app"
+    description: "Add filter tabs UI to App.tsx"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "        </div>\n\n        <div className=\"space-y-3\">"
+      action: "replace"
+      content: "        </div>\n\n        <div className=\"flex gap-1 mb-4 border-b border-gray-200 justify-center\">\n          {(['All', 'Active', 'Completed'] as const).map((tab) => (\n            <button\n              key={tab}\n              onClick={() => updatedFilter(tab)}\n              className={`px-5 py-2.5 text-sm bg-transparent border-0 -mb-px cursor-pointer outline-none transition-colors ${filter === tab\n                  ? 'text-blue-500 font-semibold'\n                  : 'text-gray-600 hover:text-gray-800'\n                }`}\n            >\n              {tab}\n            </button>\n          ))}\n        </div>\n\n        <div className=\"space-y-3\">"
+
+  - id: "ch6-update-todos-query-filter"
+    stepNumber: 44
+    workingDirectory: "livestore-todo-app"
+    description: "Update todos query to use filter from uiState"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "const todos\\$ = queryDb\\(\\\(\\) => tables.todos.select\\(\\)\\)"
+      action: "replace"
+      content: "const todos$ = queryDb((\n    (get) => {\n      const { filter } = get(uiState$)\n      return tables.todos.where({\n        completed: filter === 'Completed' ? true\n          : filter === 'Active' ? false\n            : undefined\n      })\n    }\n  ), { label: 'todos' })"
+
+  - id: "ch6-fix-query-order"
+    stepNumber: 45
+    workingDirectory: "livestore-todo-app"
+    description: "Move uiState$ definition before todos$ query to fix dependency"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "  const \\{ store \\} = useStore\\(\\\)\n\n          const todos\\$ = queryDb"
+      action: "replace"
+      content: "  const { store } = useStore()\n\n          const uiState$ = queryDb(() => tables.uiState.get())\n          const { input, filter } = store.useQuery(uiState$)\n          \n          const updatedInput = (input: string) => store.commit(events.uiStateSet({ input }))\n          const updatedFilter = (filter: Filter) => store.commit(events.uiStateSet({ filter }))\n\n          const todos$ = queryDb(("
+
+  - id: "ch6-remove-duplicate-ui-state"
+    stepNumber: 46
+    workingDirectory: "livestore-todo-app"
+    description: "Remove duplicate uiState$ definition"
+    change:
+      type: "context"
+      path: "src/App.tsx"
+      searchPattern: "const todos = store.useQuery\\(todos\\$\\)\n\n          const uiState\\$ = queryDb\\(\\\(\\) => tables.uiState.get\\(\\\)\\)\n          const \\{ input, filter \\} = store.useQuery\\(uiState\\$\\)\n          \n          const updatedInput = \\(input: string\\) => store.commit\\(events.uiStateSet\\(\\{ input \\}\\)\\)\n          const updatedFilter = \\(filter: Filter\\) => store.commit\\(events.uiStateSet\\(\\{ filter \\}\\)\\)"
+      action: "replace"
+      content: "const todos = store.useQuery(todos$)"
+
