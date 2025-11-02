@@ -74,3 +74,34 @@ The components are built independently from each other. Most importantly, the **
   - use Docker for isolation
   - offer "local" mode where everything is run the user's local machine; use `/tmp` directory
 - tutorial-step-executor can be used independently as a CLI
+
+## Notes for LLM generating YAML
+
+- Since patterns contain:
+- `\\$` (causes errors in double quotes)
+- `''` (empty strings)
+- `\n` (newline escapes)
+- Literal newlines
+- Single quotes
+Use:
+
+Single quotes for patterns with `\\$`:
+```yml
+searchPattern: 'const todos\\$ = queryDb\\(\\\(\\) => tables.todos.select\\(\\)\\)'
+```
+
+Keep double quotes for patterns with `\n` newline escapes:
+```yml
+searchPattern: "        </div>\n\n        <div className=\"space-y-3\">"
+```
+
+Single quotes for patterns with single quotes inside (double the inner quotes):
+```yml
+searchPattern: 'import tailwindcss from ''@tailwindcss/vite'''
+```
+
+Keep double quotes for patterns with only backslashes (no `$`):
+```yml
+searchPattern: "tailwindcss\\(\\),"
+```
+
