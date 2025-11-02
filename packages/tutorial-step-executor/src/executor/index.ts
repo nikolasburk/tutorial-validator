@@ -273,12 +273,7 @@ export class TutorialExecutor {
     } else if (validation.type === 'file-contents') {
       return await this.validateFileContents(step, validation);
     } else if (validation.type === 'browser') {
-      return {
-        stepId: step.id,
-        stepNumber: step.stepNumber,
-        success: false,
-        error: 'Browser validation not yet implemented',
-      };
+      return await this.validateBrowser(step, validation);
     } else {
       return {
         stepId: step.id,
@@ -286,6 +281,165 @@ export class TutorialExecutor {
         success: false,
         error: `Unknown validation type: ${(validation as any).type}`,
       };
+    }
+  }
+
+  /**
+   * Validate browser state using Playwright
+   */
+  private async validateBrowser(
+    step: ValidateStep,
+    validation: Extract<typeof step.validation, { type: 'browser' }>
+  ): Promise<StepResult> {
+    // Check if we're in a Docker environment or local
+    const isDocker = false; // this.sandbox instanceof DockerSandbox;
+    
+    if (isDocker) {
+      // Docker sandbox: Playwright is pre-installed in the image
+      // Execute browser validation inside the container
+      // TODO: Implement Docker sandbox browser validation
+      return {
+        stepId: step.id,
+        stepNumber: step.stepNumber,
+        success: false,
+        error: 'Browser validation in Docker sandbox not yet implemented',
+      };
+    } else {
+      // Local sandbox: Need Playwright on host (optional dependency)
+      let playwright: any;
+      try {
+        // @ts-expect-error - Playwright is an optional dependency, may not be installed
+        playwright = await import('playwright');
+      } catch (error: any) {
+        if (error.code === 'MODULE_NOT_FOUND') {
+          return {
+            stepId: step.id,
+            stepNumber: step.stepNumber,
+            success: false,
+            error: 'Playwright required for browser validation in local mode. ' +
+                  'Install: npm install playwright && npx playwright install',
+          };
+        }
+        throw error;
+      }
+
+      const { chromium } = playwright;
+      const browser = await chromium.launch({ headless: true });
+      const context = await browser.newContext();
+      const page = await context.newPage();
+
+      try {
+        const timeout = 30000; // Default timeout
+        page.setDefaultTimeout(timeout);
+
+        // Navigate to the URL
+        await page.goto(validation.url, {
+          waitUntil: 'load',
+        });
+
+        const { check } = validation;
+        const errors: string[] = [];
+
+        // Check containsText - page should contain specific text
+        if (check.containsText !== undefined) {
+          const pageContent = await page.textContent('body');
+          if (!pageContent || !pageContent.includes(check.containsText)) {
+            errors.push(`Page does not contain text: "${check.containsText}"`);
+          }
+        }
+
+        // Check selector - element should exist
+        if (check.selector !== undefined) {
+          try {
+            await page.waitForSelector(check.selector, {
+              state: 'attached',
+              timeout: 5000,
+            });
+          } catch (error: any) {
+            errors.push(`Element with selector "${check.selector}" not found`);
+          }
+
+          // If selector exists, check elementText if specified
+          if (errors.length === 0 && check.elementText !== undefined) {
+            try {
+              const element = await page.locator(check.selector).first();
+              const elementText = await element.textContent();
+              const expectedText = check.elementText;
+              
+              // If expected text is empty string, just check that element exists (already done)
+              // Otherwise, check exact match
+              if (expectedText !== '' && elementText?.trim() !== expectedText.trim()) {
+                errors.push(
+                  `Element "${check.selector}" has text "${elementText?.trim()}" but expected "${expectedText}"`
+                );
+              }
+            } catch (error: any) {
+              errors.push(`Failed to get text from element "${check.selector}": ${error.message}`);
+            }
+          }
+
+          // If selector exists, check attribute if specified
+          if (errors.length === 0 && check.attribute !== undefined) {
+            try {
+              const element = await page.locator(check.selector).first();
+              const attributeValue = await element.getAttribute(check.attribute.name);
+              
+              if (attributeValue !== check.attribute.value) {
+                errors.push(
+                  `Element "${check.selector}" attribute "${check.attribute.name}" has value "${attributeValue}" but expected "${check.attribute.value}"`
+                );
+              }
+            } catch (error: any) {
+              errors.push(
+                `Failed to get attribute "${check.attribute.name}" from element "${check.selector}": ${error.message}`
+              );
+            }
+          }
+        }
+
+        // Check evaluate - custom JavaScript expression
+        if (check.evaluate !== undefined) {
+          try {
+            const result = await page.evaluate(check.evaluate);
+            // If result is falsy, consider it a failure
+            if (!result) {
+              errors.push(`Evaluation "${check.evaluate}" returned falsy value`);
+            }
+          } catch (error: any) {
+            errors.push(`Evaluation "${check.evaluate}" failed: ${error.message}`);
+          }
+        }
+
+        // If no checks were specified, that's an error
+        if (
+          check.containsText === undefined &&
+          check.selector === undefined &&
+          check.evaluate === undefined
+        ) {
+          errors.push('No validation checks specified');
+        }
+
+        const success = errors.length === 0;
+
+        return {
+          stepId: step.id,
+          stepNumber: step.stepNumber,
+          success,
+          error: success ? undefined : errors.join('; '),
+          output: success
+            ? `Browser validation passed for ${validation.url}`
+            : `Browser validation failed: ${errors.join('; ')}`,
+        };
+      } catch (error: any) {
+        return {
+          stepId: step.id,
+          stepNumber: step.stepNumber,
+          success: false,
+          error: error.message || String(error),
+        };
+      } finally {
+        await browser.close();
+      }
     }
   }
 
@@ -335,7 +489,9 @@ export class TutorialExecutor {
         page.setDefaultTimeout(timeout);
 
         // Navigate to starting URL
-        await page.goto(step.url);
+        await page.goto(step.url, {
+          waitUntil: 'load',
+        });
 
         // Execute each action in sequence
         for (const action of step.actions) {
@@ -350,7 +506,7 @@ export class TutorialExecutor {
               if (action.waitForVisible !== false) {
                 await page.waitForSelector(action.selector, {
                   state: 'visible',
-                  timeout: action.timeout,
+                  timeout: action.timeout || timeout,
                 });
               }
               await page.click(action.selector);
@@ -360,13 +516,14 @@ export class TutorialExecutor {
               if (action.clear) {
                 await page.fill(action.selector, '');
               }
-              await page.type(action.selector, action.text);
+              // Use fill instead of type for better reliability
+              await page.fill(action.selector, action.text);
               break;
 
             case 'wait':
               await page.waitForSelector(action.selector, {
                 state: action.visible !== false ? 'visible' : 'attached',
-                timeout: action.timeout,
+                timeout: action.timeout || timeout,
               });
               break;
 
