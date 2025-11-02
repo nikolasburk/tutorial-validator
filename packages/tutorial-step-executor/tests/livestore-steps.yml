@@ -82,9 +82,9 @@ steps:
     change:
       type: "context"
       path: "vite.config.ts"
-      searchPattern: "tailwindcss()"
-      action: "after"
-      content: "    cloudflare(),"
+      searchPattern: "plugins: [react(), tailwindcss()]"
+      action: "replace"
+      content: "    plugins: [react(), tailwindcss(), cloudflare()],"
 
   - id: "ch2-install-wrangler"
     type: "run-command"
