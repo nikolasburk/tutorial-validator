@@ -1,0 +1,246 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tutorial-validator.dev/schema.json",
+  "title": "Tutorial Specification Schema",
+  "description": "Schema for validating tutorial step definitions",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "author": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "prerequisites": {
+      "type": "object",
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "envVars": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "versions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "workingDirectory": { "type": "string" },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/RunCommandStep"
+          },
+          {
+            "$ref": "#/definitions/ChangeFileStep"
+          },
+          {
+            "$ref": "#/definitions/ValidateStep"
+          }
+        ]
+      }
+    }
+  },
+  "required": ["steps"],
+  "definitions": {
+    "BaseStep": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "stepNumber": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["id", "stepNumber", "type"]
+    },
+    "RunCommandStep": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseStep" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "run-command" },
+            "command": { "type": "string" },
+            "workingDirectory": { "type": "string" },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "expectedExitCode": { "type": "integer" },
+            "captureOutput": { "type": "boolean" }
+          },
+          "required": ["command"]
+        }
+      ]
+    },
+    "ReplaceFileContents": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "replace" },
+        "path": { "type": "string" },
+        "contents": { "type": "string" }
+      },
+      "required": ["type", "path", "contents"]
+    },
+    "ApplyDiffChange": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "diff" },
+        "path": { "type": "string" },
+        "removeLines": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "integer", "minimum": 0 },
+            "end": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["start", "end"]
+        },
+        "insertLines": {
+          "type": "object",
+          "properties": {
+            "at": { "type": "integer", "minimum": 0 },
+            "lines": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["at", "lines"]
+        },
+        "findReplace": {
+          "type": "object",
+          "properties": {
+            "find": { "type": "string" },
+            "replace": { "type": "string" }
+          },
+          "required": ["find", "replace"]
+        }
+      },
+      "required": ["type", "path"]
+    },
+    "ContextBasedChange": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "context" },
+        "path": { "type": "string" },
+        "searchPattern": { "type": "string" },
+        "action": {
+          "type": "string",
+          "enum": ["before", "after", "replace"]
+        },
+        "content": { "type": "string" }
+      },
+      "required": ["type", "path", "searchPattern", "action", "content"]
+    },
+    "FileChange": {
+      "oneOf": [
+        { "$ref": "#/definitions/ReplaceFileContents" },
+        { "$ref": "#/definitions/ApplyDiffChange" },
+        { "$ref": "#/definitions/ContextBasedChange" }
+      ]
+    },
+    "ChangeFileStep": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseStep" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "change-file" },
+            "change": { "$ref": "#/definitions/FileChange" }
+          },
+          "required": ["change"]
+        }
+      ]
+    },
+    "ValidateCliOutput": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "cli-output" },
+        "command": { "type": "string" },
+        "workingDirectory": { "type": "string" },
+        "check": {
+          "type": "object",
+          "properties": {
+            "contains": { "type": "string" },
+            "containsError": { "type": "string" },
+            "matches": { "type": "string" },
+            "exitCode": { "type": "integer" }
+          }
+        }
+      },
+      "required": ["type", "command", "check"]
+    },
+    "ValidateFileContents": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "file-contents" },
+        "path": { "type": "string" },
+        "check": {
+          "type": "object",
+          "properties": {
+            "contains": { "type": "string" },
+            "matches": { "type": "string" },
+            "equals": { "type": "string" },
+            "exists": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["type", "path", "check"]
+    },
+    "ValidateBrowser": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "browser" },
+        "url": { "type": "string" },
+        "check": {
+          "type": "object",
+          "properties": {
+            "containsText": { "type": "string" },
+            "selector": { "type": "string" },
+            "elementText": { "type": "string" },
+            "attribute": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "value": { "type": "string" }
+              },
+              "required": ["name", "value"]
+            },
+            "evaluate": { "type": "string" }
+          }
+        }
+      },
+      "required": ["type", "url", "check"]
+    },
+    "Validation": {
+      "oneOf": [
+        { "$ref": "#/definitions/ValidateCliOutput" },
+        { "$ref": "#/definitions/ValidateFileContents" },
+        { "$ref": "#/definitions/ValidateBrowser" }
+      ]
+    },
+    "ValidateStep": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseStep" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "validate" },
+            "validation": { "$ref": "#/definitions/Validation" }
+          },
+          "required": ["validation"]
+        }
+      ]
+    }
+  }
+}

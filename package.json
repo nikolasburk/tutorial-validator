@@ -1,0 +1,16 @@
+{
+  "name": "tutorial-validator",
+  "version": "1.0.0",
+  "description": "A CLI tool that validates step-by-step tutorials by executing them",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "typescript": "^5.9.3"
+  }
+}

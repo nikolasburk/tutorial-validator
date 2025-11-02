@@ -1,0 +1,257 @@
+# yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
+
+metadata:
+  title: "Terminal Basics Tutorial"
+  description: "Welcome to this hands-on tutorial about using the terminal! You'll learn essential commands by creating a simple project structure."
+  version: "1.0.0"
+
+prerequisites:
+  commands:
+    - "cd"
+    - "pwd"
+    - "mkdir"
+    - "touch"
+    - "ls"
+    - "echo"
+    - "cat"
+
+steps:
+  # Step 1: Create tutorial directory
+  - id: "step-1-create-dir"
+    type: "run-command"
+    stepNumber: 1
+    description: "Create a new directory called terminal-tutorial"
+    command: "mkdir terminal-tutorial"
+
+  # Step 1 Validation: Verify directory was created
+  - id: "step-1-validate-dir"
+    type: "validate"
+    stepNumber: 2
+    description: "Verify terminal-tutorial directory was created"
+    validation:
+      type: "cli-output"
+      command: "ls"
+      check:
+        contains: "terminal-tutorial"
+
+  # Step 2: Navigate into tutorial directory
+  - id: "step-2-navigate-into"
+    type: "run-command"
+    stepNumber: 3
+    description: "Change into the terminal-tutorial directory"
+    command: "cd terminal-tutorial"
+
+  # Step 2 Validation: Verify we're in tutorial directory
+  - id: "step-2-validate-location"
+    type: "validate"
+    stepNumber: 4
+    description: "Verify you're inside the terminal-tutorial directory"
+    validation:
+      type: "cli-output"
+      command: "pwd"
+      check:
+        matches: ".*/terminal-tutorial$"
+
+  # Step 3: List directory contents (verify empty)
+  - id: "step-3-list-empty"
+    type: "run-command"
+    stepNumber: 5
+    description: "List the contents of the current directory"
+    command: "ls"
+
+  # Step 3 Validation: Verify directory is empty (or has minimal output)
+  - id: "step-3-validate-empty"
+    type: "validate"
+    stepNumber: 6
+    description: "Verify the directory is empty or contains minimal items"
+    validation:
+      type: "cli-output"
+      command: "ls | wc -l"
+      check:
+        matches: "^0$|^[0-2]$"
+
+  # Step 4: Create notes.txt file
+  - id: "step-4-create-file"
+    type: "run-command"
+    stepNumber: 7
+    description: "Create a new empty file called notes.txt"
+    command: "touch notes.txt"
+
+  # Step 4 Validation: Verify file was created
+  - id: "step-4-validate-file"
+    type: "validate"
+    stepNumber: 8
+    description: "Verify notes.txt file exists"
+    validation:
+      type: "file-contents"
+      path: "notes.txt"
+      check:
+        exists: true
+
+  # Step 5: Write content to file
+  - id: "step-5-write-content"
+    type: "run-command"
+    stepNumber: 9
+    description: "Write 'Hello, Terminal!' to notes.txt"
+    command: 'echo "Hello, Terminal!" > notes.txt'
+
+  # Step 5 Validation: Verify file contents
+  - id: "step-5-validate-content"
+    type: "validate"
+    stepNumber: 10
+    description: "Verify notes.txt contains the expected text"
+    validation:
+      type: "file-contents"
+      path: "notes.txt"
+      check:
+        equals: "Hello, Terminal!\n"
+
+  # Step 6: Append content to file
+  - id: "step-6-append-content"
+    type: "run-command"
+    stepNumber: 11
+    description: "Append a second line to notes.txt"
+    command: 'echo "This is my first tutorial." >> notes.txt'
+
+  # Step 6 Validation: Verify file has both lines
+  - id: "step-6-validate-appended"
+    type: "validate"
+    stepNumber: 12
+    description: "Verify notes.txt contains both lines"
+    validation:
+      type: "file-contents"
+      path: "notes.txt"
+      check:
+        equals: "Hello, Terminal!\nThis is my first tutorial.\n"
+
+  # Step 7: Create multiple files
+  - id: "step-7-create-multiple"
+    type: "run-command"
+    stepNumber: 13
+    description: "Create three more files at once"
+    command: "touch file1.txt file2.txt file3.txt"
+
+  # Step 7 Validation: Verify all files exist
+  - id: "step-7-validate-multiple"
+    type: "validate"
+    stepNumber: 14
+    description: "Verify file1.txt exists"
+    validation:
+      type: "file-contents"
+      path: "file1.txt"
+      check:
+        exists: true
+
+  - id: "step-7-validate-multiple-2"
+    type: "validate"
+    stepNumber: 15
+    description: "Verify file2.txt exists"
+    validation:
+      type: "file-contents"
+      path: "file2.txt"
+      check:
+        exists: true
+
+  - id: "step-7-validate-multiple-3"
+    type: "validate"
+    stepNumber: 16
+    description: "Verify file3.txt exists"
+    validation:
+      type: "file-contents"
+      path: "file3.txt"
+      check:
+        exists: true
+
+  # Step 8: Create subdirectory
+  - id: "step-8-create-subdir"
+    type: "run-command"
+    stepNumber: 17
+    description: "Create a new directory called docs"
+    command: "mkdir docs"
+
+  # Step 8 Validation: Verify docs directory exists
+  - id: "step-8-validate-subdir"
+    type: "validate"
+    stepNumber: 18
+    description: "Verify docs directory was created"
+    validation:
+      type: "cli-output"
+      command: "ls"
+      check:
+        contains: "docs"
+
+  # Step 9: Navigate into subdirectory
+  - id: "step-9-navigate-subdir"
+    type: "run-command"
+    stepNumber: 19
+    description: "Change into the docs directory"
+    command: "cd docs"
+
+  # Step 9 Validation: Verify location
+  - id: "step-9-validate-location"
+    type: "validate"
+    stepNumber: 20
+    description: "Verify you're in the docs subdirectory"
+    validation:
+      type: "cli-output"
+      command: "pwd"
+      check:
+        matches: ".*/terminal-tutorial/docs$"
+
+  # Step 10: Create file in subdirectory
+  - id: "step-10-create-subdir-file"
+    type: "run-command"
+    stepNumber: 21
+    description: "Create readme.txt in the docs directory"
+    command: "touch readme.txt"
+
+  # Step 10 Validation: Verify file in subdirectory
+  - id: "step-10-validate-subdir-file"
+    type: "validate"
+    stepNumber: 22
+    description: "Verify readme.txt exists in docs directory"
+    validation:
+      type: "file-contents"
+      path: "readme.txt"
+      check:
+        exists: true
+
+  # Step 11: Navigate back to parent
+  - id: "step-11-navigate-back"
+    type: "run-command"
+    stepNumber: 23
+    description: "Go back up one level to terminal-tutorial"
+    command: "cd .."
+
+  # Step 11 Validation: Verify back in parent directory
+  - id: "step-11-validate-back"
+    type: "validate"
+    stepNumber: 24
+    description: "Verify you're back in terminal-tutorial directory"
+    validation:
+      type: "cli-output"
+      command: "pwd"
+      check:
+        matches: ".*/terminal-tutorial$"
+
+  # Step 11 Additional Validation: Verify directory contents
+  - id: "step-11-validate-contents"
+    type: "validate"
+    stepNumber: 25
+    description: "Verify directory contains expected files and docs subdirectory"
+    validation:
+      type: "cli-output"
+      command: "ls"
+      check:
+        contains: "docs"
+
+  - id: "step-11-validate-contents-files"
+    type: "validate"
+    stepNumber: 26
+    description: "Verify all expected files exist"
+    validation:
+      type: "file-contents"
+      path: "notes.txt"
+      check:
+        exists: true
+
