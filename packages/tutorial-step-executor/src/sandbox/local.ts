@@ -12,6 +12,7 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import type { FileChange } from '../dsl/index.js';
 import type { Sandbox, CommandResult } from './index.js';
+import { spawn } from 'child_process';
 
 const execAsync = promisify(exec);
 
@@ -22,6 +23,7 @@ export class LocalSandbox implements Sandbox {
   private workspaceRoot: string;
   private tutorialId: string;
   private keepWorkspace: boolean = false;
+  private backgroundProcesses: Array<{ pid: number; port?: number; description: string }> = [];
 
   constructor(tutorialId?: string, baseDir?: string) {
     // Use tutorial ID or generate a UUID
@@ -58,6 +60,31 @@ export class LocalSandbox implements Sandbox {
     // Merge environment variables
     const processEnv = { ...process.env, ...env };
 
+    // Check if this is a background process command
+    const isBackground = command.includes('&') || command.trim().endsWith('&');
+    const isNohup = command.includes('nohup');
+    
+    // Declare port outside the if block so it's accessible later
+    let port: number | undefined;
+    
+    if (isBackground || isNohup) {
+      // Extract port number if we can identify it (e.g., from URL in command or common dev ports)
+      const portMatch = command.match(/localhost:(\d+)|:(\d+)/);
+      if (portMatch) {
+        port = parseInt(portMatch[1] || portMatch[2], 10);
+      }
+
+      // For dev servers, try to detect common ports if not found
+      if (!port && (command.includes('dev') || command.includes('vite') || command.includes('next'))) {
+        port = 5173; // Default Vite port
+      }
+
+      // Track this as a background process
+      if (port) {
+        this.backgroundProcesses.push({ pid: -1, port, description: command });
+      }
+    }
+
     try {
       // Execute the command
       const result = await execAsync(command, {
@@ -65,6 +92,11 @@ export class LocalSandbox implements Sandbox {
         env: processEnv,
         maxBuffer: 10 * 1024 * 1024, // 10MB buffer
       });
+
+      // If it's a background command, wait a bit and then find the actual process
+      if (isBackground || isNohup) {
+        await this.trackBackgroundProcess(cwd, port);
+      }
 
       return {
         exitCode: 0,
@@ -81,6 +113,51 @@ export class LocalSandbox implements Sandbox {
         };
       }
       throw error;
+    }
+  }
+
+  /**
+   * Track background processes after they've been started
+   */
+  private async trackBackgroundProcess(cwd: string, port?: number): Promise<void> {
+    // Wait a moment for the process to start
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    try {
+      if (port) {
+        // Find process using the port
+        const result = await execAsync(`lsof -ti:${port}`, { cwd });
+        const pids = result.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
+        for (const pid of pids) {
+          if (pid && !isNaN(pid)) {
+            // Verify it's actually in our workspace
+            try {
+              const processInfo = await execAsync(`lsof -p ${pid} | grep "${cwd}" || true`, { cwd });
+              if (processInfo.stdout.trim()) {
+                this.backgroundProcesses.push({ pid, port, description: `process on port ${port}` });
+              }
+            } catch {
+              // If we can't verify, still track it - better safe than sorry
+              this.backgroundProcesses.push({ pid, port, description: `process on port ${port}` });
+            }
+          }
+        }
+      }
+
+      // Also find processes in the workspace directory (pnpm, node, vite, etc.)
+      const workspaceProcesses = await execAsync(
+        `pgrep -f "${cwd}" || true`,
+        { cwd }
+      );
+      const wpids = workspaceProcesses.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
+      for (const pid of wpids) {
+        if (pid && !isNaN(pid) && !this.backgroundProcesses.some(p => p.pid === pid)) {
+          this.backgroundProcesses.push({ pid, description: `process in ${cwd}` });
+        }
+      }
+    } catch (error) {
+      // Don't fail if we can't track processes - just log
+      console.warn(`[WARN] Could not track background processes: ${error}`);
     }
   }
 
@@ -175,13 +252,13 @@ export class LocalSandbox implements Sandbox {
       if (change.action === 'before') {
         lines.splice(foundIndex, 0, change.content);
       } else if (change.action === 'after') {
-        // For JSON files, ensure the matched line has a comma if it's not the last property
+        // For JSON files, handle comma requirements properly
         const isJsonFile = change.path.endsWith('.json');
         if (isJsonFile && foundIndex >= 0 && foundIndex < lines.length) {
           const matchedLine = lines[foundIndex];
           const trimmedLine = matchedLine.trim();
-          // If the line doesn't end with a comma and isn't empty, add one
-          // (unless it already has a comma or closing brace/bracket)
+          
+          // Step 1: Ensure the matched line has a comma if it's not the last property
           if (
             trimmedLine.length > 0 &&
             !trimmedLine.endsWith(',') &&
@@ -190,23 +267,74 @@ export class LocalSandbox implements Sandbox {
             !trimmedLine.endsWith('}') &&
             !trimmedLine.endsWith(']')
           ) {
-            // Check if next non-empty line is another property (indicates we need a comma)
-            let hasNextProperty = false;
-            for (let j = foundIndex + 1; j < lines.length; j++) {
-              const nextLine = lines[j].trim();
-              if (nextLine.length === 0) continue;
-              // If next line looks like a property (starts with quote or closing brace), we need a comma
-              if (nextLine.startsWith('"') || nextLine.startsWith('}') || nextLine.startsWith(']')) {
-                hasNextProperty = !nextLine.startsWith('}') && !nextLine.startsWith(']');
-                break;
-              }
-            }
-            if (hasNextProperty || change.content.trim().startsWith('"')) {
+            // Check if we're inserting a property after this line
+            const insertedContent = change.content.trim();
+            if (insertedContent.startsWith('"')) {
+              // We're adding a property, so the matched line needs a comma
               lines[foundIndex] = matchedLine.replace(/([^,])$/, '$1,');
             }
           }
+          
+          // Step 2: Check if the inserted content will be the last property
+          // and remove trailing comma if so
+          let insertedContent = change.content;
+          const trimmedInserted = insertedContent.trim();
+          
+          // Look ahead to see if there are more properties after what we're inserting
+          let hasMoreProperties = false;
+          let inSameObject = true; // Track if we're still in the same JSON object
+          let braceDepth = 0;
+          
+          // Count braces from the matched line to determine object context
+          for (let i = 0; i <= foundIndex; i++) {
+            const line = lines[i];
+            for (const char of line) {
+              if (char === '{') braceDepth++;
+              if (char === '}') braceDepth--;
+            }
+          }
+          
+          // Check lines after the insertion point
+          for (let j = foundIndex + 1; j < lines.length; j++) {
+            const nextLine = lines[j];
+            const trimmedNext = nextLine.trim();
+            
+            // Update brace depth
+            for (const char of nextLine) {
+              if (char === '{') braceDepth++;
+              if (char === '}') braceDepth--;
+            }
+            
+            if (trimmedNext.length === 0) continue;
+            
+            // If we've closed more braces than opened, we've left the object
+            if (braceDepth < 0) {
+              inSameObject = false;
+              break;
+            }
+            
+            // If we find another property (starts with quote) in the same object
+            if (trimmedNext.startsWith('"') && braceDepth >= 0) {
+              hasMoreProperties = true;
+              break;
+            }
+            
+            // If we find a closing brace before another property
+            if (trimmedNext === '}' || trimmedNext.startsWith('}')) {
+              break;
+            }
+          }
+          
+          // If this is the last property (no more properties found), remove trailing comma
+          if (!hasMoreProperties && trimmedInserted.endsWith(',')) {
+            insertedContent = insertedContent.replace(/,\s*$/, '');
+          }
+          
+          lines.splice(foundIndex + 1, 0, insertedContent);
+        } else {
+          // Non-JSON file or no special handling needed
+          lines.splice(foundIndex + 1, 0, change.content);
         }
-        lines.splice(foundIndex + 1, 0, change.content);
       } else if (change.action === 'replace') {
         lines[foundIndex] = change.content;
       }
@@ -218,6 +346,9 @@ export class LocalSandbox implements Sandbox {
   async cleanup(keepWorkspace?: boolean): Promise<void> {
     this.keepWorkspace = keepWorkspace || false;
     
+    // Kill all tracked background processes
+    await this.killBackgroundProcesses();
+    
     if (!this.keepWorkspace) {
       try {
         await fs.rm(this.workspaceRoot, { recursive: true, force: true });
@@ -228,6 +359,73 @@ export class LocalSandbox implements Sandbox {
     } else {
       console.log(`[INFO] Workspace preserved at: ${this.workspaceRoot}`);
     }
+  }
+
+  /**
+   * Kill all tracked background processes
+   */
+  private async killBackgroundProcesses(): Promise<void> {
+    if (this.backgroundProcesses.length === 0) {
+      return;
+    }
+
+    console.log(`[INFO] Cleaning up ${this.backgroundProcesses.length} background process(es)...`);
+
+    for (const proc of this.backgroundProcesses) {
+      try {
+        if (proc.pid > 0) {
+          // Try graceful shutdown first (SIGTERM)
+          try {
+            process.kill(proc.pid, 'SIGTERM');
+            // Wait a bit for graceful shutdown
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Check if process still exists
+            try {
+              process.kill(proc.pid, 0); // Signal 0 just checks if process exists
+              // Process still exists, force kill
+              process.kill(proc.pid, 'SIGKILL');
+              console.log(`[INFO] Force killed process ${proc.pid}`);
+            } catch {
+              // Process already gone, good
+              console.log(`[INFO] Process ${proc.pid} terminated gracefully`);
+            }
+          } catch (error: any) {
+            if (error.code !== 'ESRCH') {
+              // ESRCH means process doesn't exist, which is fine
+              console.warn(`[WARN] Could not kill process ${proc.pid}: ${error.message}`);
+            }
+          }
+        }
+
+        // Also kill by port if specified (in case PID tracking failed)
+        if (proc.port) {
+          try {
+            await execAsync(`lsof -ti:${proc.port} | xargs kill -TERM 2>/dev/null || true`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await execAsync(`lsof -ti:${proc.port} | xargs kill -KILL 2>/dev/null || true`);
+          } catch {
+            // Ignore errors
+          }
+        }
+      } catch (error) {
+        console.warn(`[WARN] Error cleaning up process: ${error}`);
+      }
+    }
+
+    // Also do a final sweep: kill any processes still using our workspace
+    try {
+      const workspacePath = this.workspaceRoot;
+      // Find and kill processes in the workspace
+      const result = await execAsync(
+        `pkill -f "${workspacePath}" || true`,
+        { timeout: 5000 }
+      );
+    } catch {
+      // Ignore errors in final cleanup
+    }
+
+    this.backgroundProcesses = [];
   }
 
   /**
