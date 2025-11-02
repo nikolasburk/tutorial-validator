@@ -169,9 +169,96 @@ export interface ValidateStep extends BaseStep {
 }
 
 /**
+ * Browser action operations
+ */
+
+/**
+ * Navigate to a URL
+ */
+export interface NavigateAction {
+  type: 'navigate';
+  /** URL to navigate to */
+  url: string;
+  /** When to consider navigation finished */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle';
+}
+
+/**
+ * Click on an element
+ */
+export interface ClickAction {
+  type: 'click';
+  /** CSS selector for the element to click */
+  selector: string;
+  /** Wait for element to be visible before clicking (default: true) */
+  waitForVisible?: boolean;
+  /** Optional timeout in milliseconds */
+  timeout?: number;
+}
+
+/**
+ * Type text into an input field
+ */
+export interface TypeAction {
+  type: 'type';
+  /** CSS selector for the input element */
+  selector: string;
+  /** Text to type */
+  text: string;
+  /** Clear the field first (default: false) */
+  clear?: boolean;
+}
+
+/**
+ * Wait for an element to appear
+ */
+export interface WaitAction {
+  type: 'wait';
+  /** CSS selector for the element to wait for */
+  selector: string;
+  /** Wait for element to be visible (default: true) */
+  visible?: boolean;
+  /** Timeout in milliseconds (default: 30000) */
+  timeout?: number;
+}
+
+/**
+ * Evaluate JavaScript in the page context
+ */
+export interface EvaluateAction {
+  type: 'evaluate';
+  /** JavaScript expression or function to evaluate */
+  script: string;
+}
+
+/**
+ * Take a screenshot
+ */
+export interface ScreenshotAction {
+  type: 'screenshot';
+  /** Optional path to save the screenshot */
+  path?: string;
+}
+
+export type BrowserAction = NavigateAction | ClickAction | TypeAction | WaitAction | EvaluateAction | ScreenshotAction;
+
+/**
+ * Step that performs browser actions
+ */
+export interface BrowserActionStep extends BaseStep {
+  type: 'browser-action';
+  /** Starting URL to navigate to */
+  url: string;
+  /** Sequence of actions to perform */
+  actions: BrowserAction[];
+  /** Optional timeout for the entire step in milliseconds (default: 30000) */
+  timeout?: number;
+}
+
+/**
  * Union type of all possible tutorial steps
  */
-export type TutorialStep = RunCommandStep | ChangeFileStep | ValidateStep;
+export type TutorialStep = RunCommandStep | ChangeFileStep | ValidateStep | BrowserActionStep;
 
 /**
  * Complete tutorial specification

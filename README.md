@@ -77,31 +77,33 @@ The components are built independently from each other. Most importantly, the **
 
 ## Notes for LLM generating YAML
 
-- Since patterns contain:
-- `\\$` (causes errors in double quotes)
-- `''` (empty strings)
-- `\n` (newline escapes)
-- Literal newlines
-- Single quotes
-Use:
+- escaping in yml
+  - Since patterns contain:
+  - `\\$` (causes errors in double quotes)
+  - `''` (empty strings)
+  - `\n` (newline escapes)
+  - Literal newlines
+  - Single quotes
+  Use:
 
-Single quotes for patterns with `\\$`:
-```yml
-searchPattern: 'const todos\\$ = queryDb\\(\\\(\\) => tables.todos.select\\(\\)\\)'
-```
+  Single quotes for patterns with `\\$`:
+  ```yml
+  searchPattern: 'const todos\\$ = queryDb\\(\\\(\\) => tables.todos.select\\(\\)\\)'
+  ```
 
-Keep double quotes for patterns with `\n` newline escapes:
-```yml
-searchPattern: "        </div>\n\n        <div className=\"space-y-3\">"
-```
+  Keep double quotes for patterns with `\n` newline escapes:
+  ```yml
+  searchPattern: "        </div>\n\n        <div className=\"space-y-3\">"
+  ```
 
-Single quotes for patterns with single quotes inside (double the inner quotes):
-```yml
-searchPattern: 'import tailwindcss from ''@tailwindcss/vite'''
-```
+  Single quotes for patterns with single quotes inside (double the inner quotes):
+  ```yml
+  searchPattern: 'import tailwindcss from ''@tailwindcss/vite'''
+  ```
 
-Keep double quotes for patterns with only backslashes (no `$`):
-```yml
-searchPattern: "tailwindcss\\(\\),"
-```
-
+  Keep double quotes for patterns with only backslashes (no `$`):
+  ```yml
+  searchPattern: "tailwindcss\\(\\),"
+  ```
+- don't assume prerequisite if it's a tool that's being installed in the tutorial (e.g. wrangler)
+- if there's an instruction to run the app, include simple actions in the browser to test the app; generated the type of actions based on the current context

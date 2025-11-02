@@ -110,10 +110,65 @@ const ValidateStepSchema = BaseStepSchema.extend({
   validation: ValidationSchema,
 });
 
+// Browser action schemas
+const NavigateActionSchema = z.object({
+  type: z.literal('navigate'),
+  url: z.string(),
+  waitUntil: z.enum(['load', 'domcontentloaded', 'networkidle']).optional(),
+});
+
+const ClickActionSchema = z.object({
+  type: z.literal('click'),
+  selector: z.string(),
+  waitForVisible: z.boolean().optional(),
+  timeout: z.number().int().positive().optional(),
+});
+
+const TypeActionSchema = z.object({
+  type: z.literal('type'),
+  selector: z.string(),
+  text: z.string(),
+  clear: z.boolean().optional(),
+});
+
+const WaitActionSchema = z.object({
+  type: z.literal('wait'),
+  selector: z.string(),
+  visible: z.boolean().optional(),
+  timeout: z.number().int().positive().optional(),
+});
+
+const EvaluateActionSchema = z.object({
+  type: z.literal('evaluate'),
+  script: z.string(),
+});
+
+const ScreenshotActionSchema = z.object({
+  type: z.literal('screenshot'),
+  path: z.string().optional(),
+});
+
+export const BrowserActionSchema = z.discriminatedUnion('type', [
+  NavigateActionSchema,
+  ClickActionSchema,
+  TypeActionSchema,
+  WaitActionSchema,
+  EvaluateActionSchema,
+  ScreenshotActionSchema,
+]);
+
+const BrowserActionStepSchema = BaseStepSchema.extend({
+  type: z.literal('browser-action'),
+  url: z.string(),
+  actions: z.array(BrowserActionSchema),
+  timeout: z.number().int().positive().optional(),
+});
+
 export const TutorialStepSchema = z.discriminatedUnion('type', [
   RunCommandStepSchema,
   ChangeFileStepSchema,
   ValidateStepSchema,
+  BrowserActionStepSchema,
 ]);
 
 // Main tutorial spec schema

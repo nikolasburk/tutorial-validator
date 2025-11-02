@@ -10,6 +10,7 @@ import type {
   RunCommandStep,
   ChangeFileStep,
   ValidateStep,
+  BrowserActionStep,
 } from '../dsl/index.js';
 import type { Sandbox } from '../sandbox/index.js';
 import { LocalSandbox } from '../sandbox/local.js';
@@ -86,6 +87,8 @@ export class TutorialExecutor {
 
       // Execute each step
       for (const step of this.spec.steps) {
+        console.log(`[INFO] Executing step ${step.stepNumber}: ${step.description || step.id}`);
+
         const result = await this.executeStep(step, globalEnv);
         stepResults.push(result);
 
@@ -179,6 +182,8 @@ export class TutorialExecutor {
         return await this.executeChangeFileStep(step);
       } else if (step.type === 'validate') {
         return await this.executeValidateStep(step, globalEnv);
+      } else if (step.type === 'browser-action') {
+        return await this.executeBrowserActionStep(step);
       } else {
         return {
           stepId,
@@ -281,6 +286,119 @@ export class TutorialExecutor {
         success: false,
         error: `Unknown validation type: ${(validation as any).type}`,
       };
+    }
+  }
+
+  /**
+   * Execute a browser-action step
+   */
+  private async executeBrowserActionStep(step: BrowserActionStep): Promise<StepResult> {
+    // Check if we're in a Docker environment or local
+    const isDocker = false; // this.sandbox instanceof DockerSandbox;
+    
+    if (isDocker) {
+      // Docker sandbox: Playwright is pre-installed in the image
+      // Execute browser commands inside the container
+      // TODO: Implement Docker sandbox browser execution
+      return {
+        stepId: step.id,
+        stepNumber: step.stepNumber,
+        success: false,
+        error: 'Browser actions in Docker sandbox not yet implemented',
+      };
+    } else {
+      // Local sandbox: Need Playwright on host (optional dependency)
+      let playwright: any;
+      try {
+        // @ts-expect-error - Playwright is an optional dependency, may not be installed
+        playwright = await import('playwright');
+      } catch (error: any) {
+        if (error.code === 'MODULE_NOT_FOUND') {
+          return {
+            stepId: step.id,
+            stepNumber: step.stepNumber,
+            success: false,
+            error: 'Playwright required for browser actions in local mode. ' +
+                  'Install: npm install playwright && npx playwright install',
+          };
+        }
+        throw error;
+      }
+
+      const { chromium } = playwright;
+      const browser = await chromium.launch({ headless: true });
+      const context = await browser.newContext();
+      const page = await context.newPage();
+
+      try {
+        const timeout = step.timeout || 30000;
+        page.setDefaultTimeout(timeout);
+
+        // Navigate to starting URL
+        await page.goto(step.url);
+
+        // Execute each action in sequence
+        for (const action of step.actions) {
+          switch (action.type) {
+            case 'navigate':
+              await page.goto(action.url, {
+                waitUntil: action.waitUntil || 'load',
+              });
+              break;
+
+            case 'click':
+              if (action.waitForVisible !== false) {
+                await page.waitForSelector(action.selector, {
+                  state: 'visible',
+                  timeout: action.timeout,
+                });
+              }
+              await page.click(action.selector);
+              break;
+
+            case 'type':
+              if (action.clear) {
+                await page.fill(action.selector, '');
+              }
+              await page.type(action.selector, action.text);
+              break;
+
+            case 'wait':
+              await page.waitForSelector(action.selector, {
+                state: action.visible !== false ? 'visible' : 'attached',
+                timeout: action.timeout,
+              });
+              break;
+
+            case 'evaluate':
+              await page.evaluate(action.script);
+              break;
+
+            case 'screenshot':
+              await page.screenshot({
+                path: action.path || undefined,
+                fullPage: true,
+              });
+              break;
+          }
+        }
+
+        return {
+          stepId: step.id,
+          stepNumber: step.stepNumber,
+          success: true,
+          output: `Successfully performed ${step.actions.length} browser actions`,
+        };
+      } catch (error: any) {
+        return {
+          stepId: step.id,
+          stepNumber: step.stepNumber,
+          success: false,
+          error: error.message || String(error),
+        };
+      } finally {
+        await browser.close();
+      }
     }
   }
 

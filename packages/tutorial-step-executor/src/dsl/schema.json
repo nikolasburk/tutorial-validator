@@ -48,6 +48,9 @@
           },
           {
             "$ref": "#/definitions/ValidateStep"
+          },
+          {
+            "$ref": "#/definitions/BrowserActionStep"
           }
         ]
       }
@@ -239,6 +242,92 @@
             "validation": { "$ref": "#/definitions/Validation" }
           },
           "required": ["validation"]
+        }
+      ]
+    },
+    "NavigateAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "navigate" },
+        "url": { "type": "string" },
+        "waitUntil": {
+          "type": "string",
+          "enum": ["load", "domcontentloaded", "networkidle"]
+        }
+      },
+      "required": ["type", "url"]
+    },
+    "ClickAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "click" },
+        "selector": { "type": "string" },
+        "waitForVisible": { "type": "boolean" },
+        "timeout": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["type", "selector"]
+    },
+    "TypeAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "type" },
+        "selector": { "type": "string" },
+        "text": { "type": "string" },
+        "clear": { "type": "boolean" }
+      },
+      "required": ["type", "selector", "text"]
+    },
+    "WaitAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "wait" },
+        "selector": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "timeout": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["type", "selector"]
+    },
+    "EvaluateAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "evaluate" },
+        "script": { "type": "string" }
+      },
+      "required": ["type", "script"]
+    },
+    "ScreenshotAction": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "screenshot" },
+        "path": { "type": "string" }
+      },
+      "required": ["type"]
+    },
+    "BrowserAction": {
+      "oneOf": [
+        { "$ref": "#/definitions/NavigateAction" },
+        { "$ref": "#/definitions/ClickAction" },
+        { "$ref": "#/definitions/TypeAction" },
+        { "$ref": "#/definitions/WaitAction" },
+        { "$ref": "#/definitions/EvaluateAction" },
+        { "$ref": "#/definitions/ScreenshotAction" }
+      ]
+    },
+    "BrowserActionStep": {
+      "allOf": [
+        { "$ref": "#/definitions/BaseStep" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "const": "browser-action" },
+            "url": { "type": "string" },
+            "actions": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/BrowserAction" }
+            },
+            "timeout": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["type", "url", "actions"]
         }
       ]
     }
