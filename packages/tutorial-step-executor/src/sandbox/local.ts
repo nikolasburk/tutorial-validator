@@ -175,6 +175,37 @@ export class LocalSandbox implements Sandbox {
       if (change.action === 'before') {
         lines.splice(foundIndex, 0, change.content);
       } else if (change.action === 'after') {
+        // For JSON files, ensure the matched line has a comma if it's not the last property
+        const isJsonFile = change.path.endsWith('.json');
+        if (isJsonFile && foundIndex >= 0 && foundIndex < lines.length) {
+          const matchedLine = lines[foundIndex];
+          const trimmedLine = matchedLine.trim();
+          // If the line doesn't end with a comma and isn't empty, add one
+          // (unless it already has a comma or closing brace/bracket)
+          if (
+            trimmedLine.length > 0 &&
+            !trimmedLine.endsWith(',') &&
+            !trimmedLine.endsWith('{') &&
+            !trimmedLine.endsWith('[') &&
+            !trimmedLine.endsWith('}') &&
+            !trimmedLine.endsWith(']')
+          ) {
+            // Check if next non-empty line is another property (indicates we need a comma)
+            let hasNextProperty = false;
+            for (let j = foundIndex + 1; j < lines.length; j++) {
+              const nextLine = lines[j].trim();
+              if (nextLine.length === 0) continue;
+              // If next line looks like a property (starts with quote or closing brace), we need a comma
+              if (nextLine.startsWith('"') || nextLine.startsWith('}') || nextLine.startsWith(']')) {
+                hasNextProperty = !nextLine.startsWith('}') && !nextLine.startsWith(']');
+                break;
+              }
+            }
+            if (hasNextProperty || change.content.trim().startsWith('"')) {
+              lines[foundIndex] = matchedLine.replace(/([^,])$/, '$1,');
+            }
+          }
+        }
         lines.splice(foundIndex + 1, 0, change.content);
       } else if (change.action === 'replace') {
         lines[foundIndex] = change.content;

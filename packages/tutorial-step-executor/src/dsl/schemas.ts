@@ -102,6 +102,7 @@ const RunCommandStepSchema = BaseStepSchema.extend({
 
 const ChangeFileStepSchema = BaseStepSchema.extend({
   type: z.literal('change-file'),
+  workingDirectory: z.string().optional(),
   change: FileChangeSchema,
 });
 

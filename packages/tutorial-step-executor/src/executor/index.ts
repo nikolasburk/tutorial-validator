@@ -247,15 +247,24 @@ export class TutorialExecutor {
   private async executeChangeFileStep(
     step: ChangeFileStep
   ): Promise<StepResult> {
-    // File changes use the path as-is (sandbox resolves relative to workspace root)
-    // If needed, we could resolve relative to currentWorkingDir here
-    await this.sandbox.applyFileChange(step.change);
+    // Resolve working directory from step or current state
+    const workingDir = step.workingDirectory
+      ? resolveWorkingDir(this.currentWorkingDir, step.workingDirectory)
+      : this.currentWorkingDir || '';
+
+    // Create a new change object with path resolved relative to working directory
+    const changeWithResolvedPath: typeof step.change = {
+      ...step.change,
+      path: workingDir ? `${workingDir}/${step.change.path}`.replace(/\/+/g, '/') : step.change.path,
+    };
+
+    await this.sandbox.applyFileChange(changeWithResolvedPath);
 
     return {
       stepId: step.id,
       stepNumber: step.stepNumber,
       success: true,
-      output: `Applied ${step.change.type} change to ${step.change.path}`,
+      output: `Applied ${step.change.type} change to ${changeWithResolvedPath.path}`,
     };
   }
 
@@ -308,10 +317,10 @@ export class TutorialExecutor {
       // Local sandbox: Need Playwright on host (optional dependency)
       let playwright: any;
       try {
-        // @ts-expect-error - Playwright is an optional dependency, may not be installed
+        // Playwright is an optional dependency, may not be installed
         playwright = await import('playwright');
       } catch (error: any) {
-        if (error.code === 'MODULE_NOT_FOUND') {
+        if (error?.code === 'MODULE_NOT_FOUND') {
           return {
             stepId: step.id,
             stepNumber: step.stepNumber,
@@ -464,10 +473,10 @@ export class TutorialExecutor {
       // Local sandbox: Need Playwright on host (optional dependency)
       let playwright: any;
       try {
-        // @ts-expect-error - Playwright is an optional dependency, may not be installed
+        // Playwright is an optional dependency; may not be installed
         playwright = await import('playwright');
       } catch (error: any) {
-        if (error.code === 'MODULE_NOT_FOUND') {
+        if (error?.code === 'MODULE_NOT_FOUND') {
           return {
             stepId: step.id,
             stepNumber: step.stepNumber,

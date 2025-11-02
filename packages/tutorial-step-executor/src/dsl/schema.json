@@ -159,6 +159,7 @@
           "type": "object",
           "properties": {
             "type": { "const": "change-file" },
+            "workingDirectory": { "type": "string" },
             "change": { "$ref": "#/definitions/FileChange" }
           },
           "required": ["change"]

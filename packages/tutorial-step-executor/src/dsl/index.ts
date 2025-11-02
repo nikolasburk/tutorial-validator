@@ -85,6 +85,8 @@ export type FileChange = ReplaceFileContents | ApplyDiffChange | ContextBasedCha
  */
 export interface ChangeFileStep extends BaseStep {
   type: 'change-file';
+  /** Working directory where the file change should be applied */
+  workingDirectory?: string;
   /** The file change operation to perform */
   change: FileChange;
 }
