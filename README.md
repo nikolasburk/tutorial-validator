@@ -1,9 +1,9 @@
 # Tutorial validator
 
-The **tutorial validator** is a CLI tool that runs through your step-by-step tutorials as if it were a human! It helps you spot issues in the tutorial and provides feedbackl about what should be improved.
+The **tutorial validator** is a CLI tool that runs through your step-by-step tutorials as if it were a human! It helps you spot issues in the tutorial, alerts you when it breaks and provides feedback about what can be improved.
 
 - ⚙️ Validates that a tutorial works as expected (can be used in CI)
-- 🎓 Ensures instructions are clear for readers of all experience levels
+- 🖥️ Includes testing functionality in browsers via Playwright
 - 💡 Generates feedback report with improvement suggestions
 
 > **Note**: This project is under active development. If you have ideas for features or how to improve it otherwise, feel free to open an issue or reach out to [nikolasburk](https://x.com/nikolasburk) on X.
