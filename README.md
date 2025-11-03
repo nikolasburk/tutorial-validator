@@ -1,6 +1,6 @@
 # Tutorial validator
 
-The tutorial validator is CLI that runs through your step-by-step tutorials as if it were a human! 
+The **tutorial validator** is a CLI tool that runs through your step-by-step tutorials as if it were a human! It helps you spot issues in the tutorial and provides feedbackl about what should be improved.
 
 - ⚙️ Validates that a tutorial works as expected (can be used in CI)
 - 🎓 Ensures instructions are clear for readers of all experience levels
