@@ -2,9 +2,9 @@
 
 The tutorial validator runs through your step-by-step tutorials as if it were a human! 
 
-- ✅ Generates feedback reports with improvement suggestions
-- ✅ Validates that a tutorial works (can be used in CI of your docs site)
-- ✅ Ensures instructions are clear for readers of all experience levels
+- 💡 Generates feedback reports with improvement suggestions
+- ⚙️ Validates that a tutorial works (can be used in CI of your docs site)
+- 🎓 Ensures instructions are clear for readers of all experience levels
 
 > **Note**: This project is under active development. If you have ideas for features or how to improve it otherwise, feel free to open an issue or reach out to [nikolasburk](https://x.com/nikolasburk) on X.
 
