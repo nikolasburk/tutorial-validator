@@ -400,7 +400,6 @@ steps:
       - type: "wait"
         selector: "text='Test LiveStore todo'"
         visible: true
-        timeout: 10000
 
   - id: "ch3-validate-todo-added"
     type: "validate"
@@ -440,9 +439,9 @@ steps:
     change:
       type: "context"
       path: "vite.config.ts"
-      searchPattern: "    cloudflare(),"
+      searchPattern: "    cloudflare()"
       action: "after"
-      content: "    livestoreDevtoolsPlugin({ schemaPath: './src/livestore/schema.ts' }),"
+      content: ",\n    livestoreDevtoolsPlugin({ schemaPath: './src/livestore/schema.ts' }),"
 
   # Chapter 4: Sync data to Cloudflare
   - id: "ch4-install-sync-cf"
@@ -625,7 +624,7 @@ steps:
     change:
       type: "context"
       path: "src/App.tsx"
-      searchPattern: "                      <span className=\"text-gray-700\">{todo.text}</span>"
+      searchPattern: '              <span className="text-gray-700">{todo.text}</span>'
       action: "replace"
       content: |
                       <div className="flex items-center gap-3 flex-1">

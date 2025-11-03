@@ -111,6 +111,7 @@ async function main() {
   // Parse flags
   const keepWorkspace = args.includes('--keep-workspace') || args.includes('-k');
   const verbose = args.includes('--verbose') || args.includes('-v');
+  const debugScreenshots = args.includes('--screenshots') || args.includes('--debug-screenshots');
   const yamlFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
 
   if (!yamlFile) {
@@ -119,12 +120,14 @@ async function main() {
     console.error('Options:');
     console.error('  --keep-workspace, -k    Keep workspace after execution (for debugging)');
     console.error('  --verbose, -v          Show detailed debug output');
+    console.error('  --screenshots          Automatically save screenshots after browser steps');
     process.exit(1);
   }
 
   if (verbose) {
     console.log(`[DEBUG] YAML file: ${yamlFile}`);
     console.log(`[DEBUG] Keep workspace: ${keepWorkspace}`);
+    console.log(`[DEBUG] Debug screenshots: ${debugScreenshots}`);
   }
 
   // Parse and validate tutorial spec
@@ -148,7 +151,7 @@ async function main() {
   // Execute tutorial
   console.log('\n[INFO] Executing tutorial steps...\n');
   
-  const executor = new TutorialExecutor(tutorialSpec);
+  const executor = new TutorialExecutor(tutorialSpec, undefined, { debugScreenshots });
   
   try {
     const result = await executor.execute();

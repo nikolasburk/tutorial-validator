@@ -58,12 +58,14 @@ export class TutorialExecutor {
   private currentWorkingDir: string;
   private browser: any = null;  // Shared browser instance
   private browserContext: any = null;  // Shared browser context
+  private debugScreenshots: boolean;  // Add this
 
-  constructor(spec: TutorialSpec, sandbox?: Sandbox) {
+  constructor(spec: TutorialSpec, sandbox?: Sandbox, options?: { debugScreenshots?: boolean }) {
     this.spec = spec;
     this.sandbox = sandbox || new LocalSandbox(spec.metadata?.title);
     // Initialize current working directory from spec
     this.currentWorkingDir = spec.workingDirectory || '';
+    this.debugScreenshots = options?.debugScreenshots || false;  // Add this
   }
 
   /**
@@ -302,6 +304,7 @@ export class TutorialExecutor {
     step: ValidateStep,
     validation: Extract<typeof step.validation, { type: 'browser' }>
   ): Promise<StepResult> {
+
     // Check if we're in a Docker environment or local
     const isDocker = false; // this.sandbox instanceof DockerSandbox;
     
@@ -363,7 +366,6 @@ export class TutorialExecutor {
           try {
             await page.waitForSelector(check.selector, {
               state: 'attached',
-              timeout: 5000,
             });
           } catch (error: any) {
             errors.push(`Element with selector "${check.selector}" not found`);
@@ -431,6 +433,13 @@ export class TutorialExecutor {
 
         const success = errors.length === 0;
 
+        // Save debug screenshot after validation
+        await this.saveDebugScreenshot(page, {
+          stepNumber: step.stepNumber,
+          type: 'validate',
+          workingDirectory: undefined, // ValidateStep doesn't have workingDirectory
+        }, success ? 'pass' : 'fail');
+
         return {
           stepId: step.id,
           stepNumber: step.stepNumber,
@@ -441,6 +450,13 @@ export class TutorialExecutor {
             : `Browser validation failed: ${errors.join('; ')}`,
         };
       } catch (error: any) {
+        // Save debug screenshot on error
+        await this.saveDebugScreenshot(page, {
+          stepNumber: step.stepNumber,
+          type: 'validate',
+          workingDirectory: undefined, // ValidateStep doesn't have workingDirectory
+        }, 'error').catch(() => {}); // Ignore screenshot errors on failure
+
         return {
           stepId: step.id,
           stepNumber: step.stepNumber,
@@ -550,6 +566,13 @@ export class TutorialExecutor {
           }
         }
 
+        // Save debug screenshot after actions complete
+        await this.saveDebugScreenshot(page, {
+          stepNumber: step.stepNumber,
+          type: 'browser-action',
+          workingDirectory: undefined, // BrowserActionStep doesn't have workingDirectory
+        });
+
         return {
           stepId: step.id,
           stepNumber: step.stepNumber,
@@ -557,6 +580,13 @@ export class TutorialExecutor {
           output: `Successfully performed ${step.actions.length} browser actions`,
         };
       } catch (error: any) {
+        // Save debug screenshot on error
+        await this.saveDebugScreenshot(page, {
+          stepNumber: step.stepNumber,
+          type: 'browser-action',
+          workingDirectory: undefined, // BrowserActionStep doesn't have workingDirectory
+        }, 'error').catch(() => {}); // Ignore screenshot errors on failure
+
         return {
           stepId: step.id,
           stepNumber: step.stepNumber,
@@ -855,7 +885,7 @@ export class TutorialExecutor {
         cleanup: async () => {}, // No cleanup needed for shared context
       };
     }
-    
+        
     const playwright = await import('playwright');
     const { chromium } = playwright;
     
@@ -884,6 +914,40 @@ export class TutorialExecutor {
         },
       };
     }
+  }
+
+  /**
+   * Helper to save a debug screenshot
+   */
+  private async saveDebugScreenshot(
+    page: any,
+    step: { stepNumber: number; type: string; workingDirectory?: string },
+    suffix?: string
+  ): Promise<void> {
+    if (!this.debugScreenshots) return;
+
+    // Resolve working directory
+    const workingDir = step.workingDirectory
+    ? resolveWorkingDir(this.currentWorkingDir, step.workingDirectory)
+    : this.currentWorkingDir || '';
+    
+    // Generate filename: step-{number}-{type}-{suffix}.png
+    const suffixPart = suffix ? `-${suffix}` : '';
+    const filename = `step-${step.stepNumber}-${step.type}${suffixPart}.png`;
+    
+    // Resolve path relative to workspace root
+    const workspaceRoot = this.sandbox.getWorkspaceRoot();
+    const relativePath = workingDir 
+      ? `${workingDir}/${filename}`.replace(/\/+/g, '/')
+      : filename;
+    const screenshotPath = resolve(workspaceRoot, relativePath);
+
+    console.log('[DEBUG] saveDebugScreenshot', screenshotPath);
+
+    await page.screenshot({
+      path: screenshotPath,
+      fullPage: true,
+    });
   }
 }
 
