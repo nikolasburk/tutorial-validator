@@ -34,6 +34,7 @@ const ValidateFileContentsSchema = z.object({
 const ValidateBrowserSchema = z.object({
   type: z.literal('browser'),
   url: z.string(),
+  useSharedContext: z.boolean().optional(),
   check: z.object({
     containsText: z.string().optional(),
     selector: z.string().optional(),
@@ -163,6 +164,7 @@ const BrowserActionStepSchema = BaseStepSchema.extend({
   url: z.string(),
   actions: z.array(BrowserActionSchema),
   timeout: z.number().int().positive().optional(),
+  useSharedContext: z.boolean().optional(),
 });
 
 export const TutorialStepSchema = z.discriminatedUnion('type', [

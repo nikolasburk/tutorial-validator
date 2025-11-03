@@ -144,6 +144,11 @@ export interface ValidateBrowser {
   type: 'browser';
   /** URL to navigate to */
   url: string;
+  /** Whether to reuse the previous browser context (default: true).
+   * When true, OPFS storage is shared with previous browser steps.
+   * When false, creates a fresh browser context with isolated storage.
+   */
+  useSharedContext?: boolean;
   /** What to check on the page */
   check: {
     /** Page should contain this text */
@@ -255,6 +260,11 @@ export interface BrowserActionStep extends BaseStep {
   actions: BrowserAction[];
   /** Optional timeout for the entire step in milliseconds (default: 30000) */
   timeout?: number;
+  /** Whether to reuse the previous browser context (default: true).
+   * When true, OPFS storage is shared with previous browser steps.
+   * When false, creates a fresh browser context with isolated storage.
+   */
+  useSharedContext?: boolean;
 }
 
 /**

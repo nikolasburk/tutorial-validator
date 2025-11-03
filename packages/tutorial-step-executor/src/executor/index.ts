@@ -56,6 +56,8 @@ export class TutorialExecutor {
   private spec: TutorialSpec;
   /** Current working directory relative to workspace root */
   private currentWorkingDir: string;
+  private browser: any = null;  // Shared browser instance
+  private browserContext: any = null;  // Shared browser context
 
   constructor(spec: TutorialSpec, sandbox?: Sandbox) {
     this.spec = spec;
@@ -332,9 +334,8 @@ export class TutorialExecutor {
         throw error;
       }
 
-      const { chromium } = playwright;
-      const browser = await chromium.launch({ headless: true });
-      const context = await browser.newContext();
+      const useShared = validation.useSharedContext !== false; // Default to true
+      const { context, cleanup } = await this.getBrowserContext(useShared);
       const page = await context.newPage();
 
       try {
@@ -447,7 +448,8 @@ export class TutorialExecutor {
           error: error.message || String(error),
         };
       } finally {
-        await browser.close();
+        await page.close();
+        await cleanup(); // Clean up isolated browser if created
       }
     }
   }
@@ -488,9 +490,8 @@ export class TutorialExecutor {
         throw error;
       }
 
-      const { chromium } = playwright;
-      const browser = await chromium.launch({ headless: true });
-      const context = await browser.newContext();
+      const useShared = step.useSharedContext !== false; // Default to true
+      const { context, cleanup } = await this.getBrowserContext(useShared);
       const page = await context.newPage();
 
       try {
@@ -563,7 +564,8 @@ export class TutorialExecutor {
           error: error.message || String(error),
         };
       } finally {
-        await browser.close();
+        await page.close();
+        await cleanup(); // Clean up isolated browser if created
       }
     }
   }
@@ -717,6 +719,11 @@ export class TutorialExecutor {
    * Cleanup the sandbox
    */
   async cleanup(keepWorkspace?: boolean): Promise<void> {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      this.browserContext = null;
+    }
     await this.sandbox.cleanup(keepWorkspace);
   }
 
@@ -831,6 +838,52 @@ export class TutorialExecutor {
     // If the path is outside the workspace, we can't track it relative to workspace
     // Return null to indicate we can't track it
     return '';
+  }
+
+  /**
+   * Get or create a browser context
+   * @param useShared - If true, reuse the shared context. If false, create an isolated context.
+   * @returns The browser context and a cleanup function
+   */
+  private async getBrowserContext(useShared: boolean = true): Promise<{
+    context: any;
+    cleanup: () => Promise<void>;
+  }> {
+    if (useShared && this.browserContext) {
+      return {
+        context: this.browserContext,
+        cleanup: async () => {}, // No cleanup needed for shared context
+      };
+    }
+    
+    const playwright = await import('playwright');
+    const { chromium } = playwright;
+    
+    if (useShared) {
+      // Shared context: reuse browser instance
+      if (!this.browser) {
+        this.browser = await chromium.launch({ headless: true });
+        this.browserContext = await this.browser.newContext({
+          // Storage will persist across pages in this context
+        });
+      }
+      return {
+        context: this.browserContext,
+        cleanup: async () => {}, // No cleanup needed for shared context
+      };
+    } else {
+      // Isolated context: create a new browser and context
+      const isolatedBrowser = await chromium.launch({ headless: true });
+      const isolatedContext = await isolatedBrowser.newContext({
+        // Fresh storage, isolated from shared context
+      });
+      return {
+        context: isolatedContext,
+        cleanup: async () => {
+          await isolatedBrowser.close();
+        },
+      };
+    }
   }
 }
 

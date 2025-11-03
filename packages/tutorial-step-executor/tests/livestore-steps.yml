@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
 
 metadata:
-  title: "LiveStore Todo App Tutorial"
+  title: "LiveStore-Todo-App-Tutorial"
   description: "Build a todo app with React, Vite & Tailwind using LiveStore as its data layer"
   version: "1.0.0"
 
@@ -84,7 +84,7 @@ steps:
       path: "vite.config.ts"
       searchPattern: "plugins: [react(), tailwindcss()]"
       action: "replace"
-      content: "    plugins: [react(), tailwindcss(), cloudflare()],"
+      content: "  plugins: [\n    react(),\n    tailwindcss(),\n    cloudflare()\n  ],"
 
   - id: "ch2-install-wrangler"
     type: "run-command"
@@ -256,9 +256,9 @@ steps:
     change:
       type: "context"
       path: "vite.config.ts"
-      searchPattern: "    cloudflare(),"
+      searchPattern: "  ],"
       action: "after"
-      content: "  ],\n  optimizeDeps: {\n    exclude: ['@livestore/wa-sqlite'],\n  },"
+      content: "  optimizeDeps: {\n    exclude: ['@livestore/wa-sqlite'],\n  },"
 
   - id: "ch3-update-app-tsx"
     type: "change-file"
@@ -358,9 +358,16 @@ steps:
 
         export default App
 
+  - id: "ch3-wait-server-ready-after-changes"
+    type: "run-command"
+    stepNumber: 22
+    description: "Wait for development server to be ready after code changes"
+    workingDirectory: "livestore-todo-app"
+    command: "for i in {1..30}; do curl -s http://localhost:5173 > /dev/null 2>&1 && break || sleep 1; done || true"
+
   - id: "ch3-validate-livestore-integration"
     type: "validate"
-    stepNumber: 22
+    stepNumber: 23
     description: "Verify LiveStore integration - app shows todo input field"
     workingDirectory: "livestore-todo-app"
     validation:
@@ -372,7 +379,7 @@ steps:
 
   - id: "ch3-test-add-todo"
     type: "browser-action"
-    stepNumber: 23
+    stepNumber: 24
     description: "Test adding a todo item to verify LiveStore integration works"
     workingDirectory: "livestore-todo-app"
     url: "http://localhost:5173"
@@ -391,30 +398,31 @@ steps:
       - type: "click"
         selector: "button:has-text('Add')"
       - type: "wait"
-        selector: ".space-y-3"
+        selector: "text='Test LiveStore todo'"
         visible: true
+        timeout: 10000
 
   - id: "ch3-validate-todo-added"
     type: "validate"
-    stepNumber: 24
+    stepNumber: 25
     description: "Verify todo item was added and appears in the list"
     workingDirectory: "livestore-todo-app"
     validation:
       type: "browser"
       url: "http://localhost:5173"
       check:
-        containsText: "Test LiveStore todo"
+        selector: "text='Test LiveStore todo'"
 
   - id: "ch3-install-devtools"
     type: "run-command"
-    stepNumber: 25
+    stepNumber: 26
     description: "Install LiveStore DevTools"
     workingDirectory: "livestore-todo-app"
     command: "pnpm add @livestore/devtools-vite@0.4.0-dev.14"
 
   - id: "ch3-add-devtools-import"
     type: "change-file"
-    stepNumber: 26
+    stepNumber: 27
     description: "Add devtools import to vite.config.ts"
     workingDirectory: "livestore-todo-app"
     change:
@@ -426,7 +434,7 @@ steps:
 
   - id: "ch3-add-devtools-plugin"
     type: "change-file"
-    stepNumber: 27
+    stepNumber: 28
     description: "Add devtools plugin to vite.config.ts"
     workingDirectory: "livestore-todo-app"
     change:
@@ -439,28 +447,28 @@ steps:
   # Chapter 4: Sync data to Cloudflare
   - id: "ch4-install-sync-cf"
     type: "run-command"
-    stepNumber: 28
+    stepNumber: 29
     description: "Install Cloudflare sync provider package"
     workingDirectory: "livestore-todo-app"
     command: "pnpm add @livestore/sync-cf@0.4.0-dev.14"
 
   - id: "ch4-create-sync-dir"
     type: "run-command"
-    stepNumber: 29
+    stepNumber: 30
     description: "Create sync directory"
     workingDirectory: "livestore-todo-app"
     command: "mkdir -p src/sync"
 
   - id: "ch4-create-client-ws-file"
     type: "run-command"
-    stepNumber: 30
+    stepNumber: 31
     description: "Create client-ws.ts file for sync backend"
     workingDirectory: "livestore-todo-app"
     command: "touch src/sync/client-ws.ts"
 
   - id: "ch4-add-client-ws-content"
     type: "change-file"
-    stepNumber: 31
+    stepNumber: 32
     description: "Add sync backend code to client-ws.ts"
     workingDirectory: "livestore-todo-app"
     change:
@@ -499,7 +507,7 @@ steps:
 
   - id: "ch4-update-worker-sync"
     type: "change-file"
-    stepNumber: 32
+    stepNumber: 33
     description: "Update livestore.worker.ts to include sync configuration"
     workingDirectory: "livestore-todo-app"
     change:
@@ -511,7 +519,7 @@ steps:
 
   - id: "ch4-update-worker-sync-config"
     type: "change-file"
-    stepNumber: 33
+    stepNumber: 34
     description: "Add sync backend to worker configuration"
     workingDirectory: "livestore-todo-app"
     change:
@@ -523,7 +531,7 @@ steps:
 
   - id: "ch4-update-wrangler-toml-sync"
     type: "change-file"
-    stepNumber: 34
+    stepNumber: 35
     description: "Update wrangler.toml with sync backend configuration"
     workingDirectory: "livestore-todo-app"
     change:
@@ -548,7 +556,7 @@ steps:
   # Chapter 5: Expand business logic with more events
   - id: "ch5-update-schema-completed"
     type: "change-file"
-    stepNumber: 35
+    stepNumber: 36
     description: "Add completed column to todos table in schema"
     workingDirectory: "livestore-todo-app"
     change:
@@ -560,7 +568,7 @@ steps:
 
   - id: "ch5-add-completed-events"
     type: "change-file"
-    stepNumber: 36
+    stepNumber: 37
     description: "Add todoCompleted and todoUncompleted events to schema"
     workingDirectory: "livestore-todo-app"
     change:
@@ -580,7 +588,7 @@ steps:
 
   - id: "ch5-add-completed-materializers"
     type: "change-file"
-    stepNumber: 37
+    stepNumber: 38
     description: "Add materializers for completed/uncompleted events"
     workingDirectory: "livestore-todo-app"
     change:
@@ -594,7 +602,7 @@ steps:
 
   - id: "ch5-add-toggle-todo-function"
     type: "change-file"
-    stepNumber: 38
+    stepNumber: 39
     description: "Add toggleTodo function to App.tsx"
     workingDirectory: "livestore-todo-app"
     change:
@@ -611,7 +619,7 @@ steps:
 
   - id: "ch5-update-todo-item-structure"
     type: "change-file"
-    stepNumber: 39
+    stepNumber: 40
     description: "Replace todo item structure to include checkbox"
     workingDirectory: "livestore-todo-app"
     change:
@@ -634,7 +642,7 @@ steps:
 
   - id: "ch5-validate-checkboxes"
     type: "validate"
-    stepNumber: 40
+    stepNumber: 41
     description: "Verify checkboxes appear in todo items"
     workingDirectory: "livestore-todo-app"
     validation:
@@ -645,7 +653,7 @@ steps:
 
   - id: "ch5-test-toggle-checkbox"
     type: "browser-action"
-    stepNumber: 41
+    stepNumber: 42
     description: "Test toggling a todo checkbox to mark it as completed"
     workingDirectory: "livestore-todo-app"
     url: "http://localhost:5173"
@@ -658,7 +666,7 @@ steps:
 
   - id: "ch5-validate-todo-completed"
     type: "validate"
-    stepNumber: 42
+    stepNumber: 43
     description: "Verify todo item shows as completed (strikethrough style)"
     workingDirectory: "livestore-todo-app"
     validation:
@@ -670,7 +678,7 @@ steps:
   # Chapter 6: Persist UI state
   - id: "ch6-add-filter-state"
     type: "change-file"
-    stepNumber: 43
+    stepNumber: 44
     description: "Add filter state and UI tabs to App.tsx"
     workingDirectory: "livestore-todo-app"
     change:
@@ -682,7 +690,7 @@ steps:
 
   - id: "ch6-add-filter-tabs"
     type: "change-file"
-    stepNumber: 44
+    stepNumber: 45
     description: "Add filter tabs UI before todo list"
     workingDirectory: "livestore-todo-app"
     change:
@@ -710,7 +718,7 @@ steps:
 
   - id: "ch6-test-filter-tabs"
     type: "browser-action"
-    stepNumber: 45
+    stepNumber: 46
     description: "Test clicking filter tabs to verify filtering works"
     workingDirectory: "livestore-todo-app"
     url: "http://localhost:5173"
@@ -733,7 +741,7 @@ steps:
 
   - id: "ch6-update-schema-client-doc"
     type: "change-file"
-    stepNumber: 46
+    stepNumber: 47
     description: "Update schema imports to include SessionIdSymbol"
     workingDirectory: "livestore-todo-app"
     change:
@@ -745,7 +753,7 @@ steps:
 
   - id: "ch6-add-filter-schema"
     type: "change-file"
-    stepNumber: 47
+    stepNumber: 48
     description: "Add Filter schema definition"
     workingDirectory: "livestore-todo-app"
     change:
@@ -759,7 +767,7 @@ steps:
 
   - id: "ch6-add-ui-state-table"
     type: "change-file"
-    stepNumber: 48
+    stepNumber: 49
     description: "Add uiState client document to tables"
     workingDirectory: "livestore-todo-app"
     change:
@@ -771,7 +779,7 @@ steps:
 
   - id: "ch6-add-ui-state-event"
     type: "change-file"
-    stepNumber: 49
+    stepNumber: 50
     description: "Add uiStateSet event"
     workingDirectory: "livestore-todo-app"
     change:
@@ -785,7 +793,7 @@ steps:
 
   - id: "ch6-replace-usestate-with-livestore"
     type: "change-file"
-    stepNumber: 50
+    stepNumber: 51
     description: "Replace useState with LiveStore queries for input and filter"
     workingDirectory: "livestore-todo-app"
     change:
@@ -797,7 +805,7 @@ steps:
 
   - id: "ch6-remove-usestate-import"
     type: "change-file"
-    stepNumber: 51
+    stepNumber: 52
     description: "Remove useState import since it's no longer needed"
     workingDirectory: "livestore-todo-app"
     change:
@@ -809,7 +817,7 @@ steps:
 
   - id: "ch6-add-ui-state-query"
     type: "change-file"
-    stepNumber: 52
+    stepNumber: 53
     description: "Add uiState query and replace useState calls"
     workingDirectory: "livestore-todo-app"
     change:
@@ -826,7 +834,7 @@ steps:
 
   - id: "ch6-remove-old-usestate"
     type: "change-file"
-    stepNumber: 53
+    stepNumber: 54
     description: "Remove old useState declarations"
     workingDirectory: "livestore-todo-app"
     change:
@@ -838,7 +846,7 @@ steps:
 
   - id: "ch6-remove-filter-usestate"
     type: "change-file"
-    stepNumber: 54
+    stepNumber: 55
     description: "Remove filter useState declaration"
     workingDirectory: "livestore-todo-app"
     change:
@@ -850,7 +858,7 @@ steps:
 
   - id: "ch6-update-todos-query-with-filter"
     type: "change-file"
-    stepNumber: 55
+    stepNumber: 56
     description: "Update todos query to use filter from uiState"
     workingDirectory: "livestore-todo-app"
     change:
@@ -872,7 +880,7 @@ steps:
 
   - id: "ch6-update-input-handlers"
     type: "change-file"
-    stepNumber: 56
+    stepNumber: 57
     description: "Replace setInput calls with updatedInput"
     workingDirectory: "livestore-todo-app"
     change:
@@ -884,7 +892,7 @@ steps:
 
   - id: "ch6-update-add-todo-clear"
     type: "change-file"
-    stepNumber: 57
+    stepNumber: 58
     description: "Replace setInput('') with updatedInput('')"
     workingDirectory: "livestore-todo-app"
     change:
@@ -896,7 +904,7 @@ steps:
 
   - id: "ch6-update-filter-handler"
     type: "change-file"
-    stepNumber: 58
+    stepNumber: 59
     description: "Replace setFilter calls with updatedFilter"
     workingDirectory: "livestore-todo-app"
     change:
@@ -908,7 +916,7 @@ steps:
 
   - id: "ch6-fix-app-tsx-min-height"
     type: "change-file"
-    stepNumber: 59
+    stepNumber: 60
     description: "Update min-h-screen to min-h-screen bg-gray-50 flex items-start"
     workingDirectory: "livestore-todo-app"
     change:
@@ -920,7 +928,7 @@ steps:
 
   - id: "ch6-update-space-y-3"
     type: "change-file"
-    stepNumber: 60
+    stepNumber: 61
     description: "Add min-h-[200px] to space-y-3 div"
     workingDirectory: "livestore-todo-app"
     change:
@@ -932,7 +940,7 @@ steps:
 
   - id: "ch6-validate-filter-tabs"
     type: "validate"
-    stepNumber: 61
+    stepNumber: 62
     description: "Verify filter tabs (All, Active, Completed) appear and work correctly"
     workingDirectory: "livestore-todo-app"
     validation:

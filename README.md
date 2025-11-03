@@ -1,10 +1,18 @@
 # Tutorial validator
 
-## Step-by-step tutorials are a great to learn
+The tutorial validator runs through your step-by-step tutorials as if it were a human! 
+
+✅ Generates feedback reports with improvement suggestions
+✅ Validates that a tutorial works (can be used in CI of your docs site)
+✅ Ensures instructions are clear for readers of all experience levels
+
+> **Note**: This project is under active development. If you have ideas for features or how to improve it otherwise, feel free to open an issue or reach out to [nikolasburk](https://x.com/nikolasburk) on X.
+
+## Step-by-step tutorials are a great way to learn
 
 Step-by-step programming tutorials are a great way to learn about new concepts/tools by practical example. They allow readers to understand new things gradually because they take the reader on a journey to build something in a well-defined, and deterministic, way. Sometimes, a tutorial has “checkpoints” along the way where the reader can test what they’ve built so far and validate that everything works as expected. For these kinds of tutorials, it’s very important that instructions are given in a precise, clear and unambiguous way.
 
-## Problem with step-by-step tutorials
+## Problems with step-by-step tutorials
 
 However, there are a few problems with these kinds of tutorials:
 
@@ -14,6 +22,7 @@ However, there are a few problems with these kinds of tutorials:
     - it’s not clearly specified _where_ a certain change should happen, e.g. when a certain file should be changed but it’s not clear where in that file
     - certain steps are skipped because they seem too natural to be written down (e.g. a command to start an app so that it can be tested); this can especially trip up beginners/newcomers that otherwise have very little knowledge about the tool they’re trying to learn about
     - prerequisites aren’t explicit enough so that readers hit a wall at a certain point in the tutorial, e.g. because they don’t have a tool (or its correct version) installed
+- readers may have different experience levels and what's implicitly understood by some, may not be by others
 
 ## Solution
 

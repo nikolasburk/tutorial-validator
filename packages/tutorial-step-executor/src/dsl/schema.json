@@ -206,6 +206,7 @@
       "properties": {
         "type": { "const": "browser" },
         "url": { "type": "string" },
+        "useSharedContext": { "type": "boolean" },
         "check": {
           "type": "object",
           "properties": {
@@ -326,7 +327,8 @@
               "type": "array",
               "items": { "$ref": "#/definitions/BrowserAction" }
             },
-            "timeout": { "type": "integer", "minimum": 1 }
+            "timeout": { "type": "integer", "minimum": 1 },
+            "useSharedContext": { "type": "boolean" }
           },
           "required": ["type", "url", "actions"]
         }

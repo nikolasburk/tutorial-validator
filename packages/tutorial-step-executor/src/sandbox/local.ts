@@ -6,13 +6,12 @@
  */
 
 import { promises as fs } from 'fs';
-import { join, resolve, dirname } from 'path';
+import { resolve, dirname } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import type { FileChange } from '../dsl/index.js';
 import type { Sandbox, CommandResult } from './index.js';
-import { spawn } from 'child_process';
 
 const execAsync = promisify(exec);
 
@@ -126,38 +125,57 @@ export class LocalSandbox implements Sandbox {
     try {
       if (port) {
         // Find process using the port
-        const result = await execAsync(`lsof -ti:${port}`, { cwd });
-        const pids = result.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
-        for (const pid of pids) {
-          if (pid && !isNaN(pid)) {
-            // Verify it's actually in our workspace
-            try {
-              const processInfo = await execAsync(`lsof -p ${pid} | grep "${cwd}" || true`, { cwd });
-              if (processInfo.stdout.trim()) {
+        // lsof returns exit code 1 when no process is found, which is normal and expected
+        try {
+          const result = await execAsync(`lsof -ti:${port}`, { cwd });
+          const pids = result.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
+          for (const pid of pids) {
+            if (pid && !isNaN(pid)) {
+              // Verify it's actually in our workspace
+              try {
+                const processInfo = await execAsync(`lsof -p ${pid} | grep "${cwd}" || true`, { cwd });
+                if (processInfo.stdout.trim()) {
+                  this.backgroundProcesses.push({ pid, port, description: `process on port ${port}` });
+                }
+              } catch {
+                // If we can't verify, still track it - better safe than sorry
                 this.backgroundProcesses.push({ pid, port, description: `process on port ${port}` });
               }
-            } catch {
-              // If we can't verify, still track it - better safe than sorry
-              this.backgroundProcesses.push({ pid, port, description: `process on port ${port}` });
             }
           }
+        } catch (error: any) {
+          // Only log actual errors (not "no processes found")
+          // lsof returns exit code 1 when nothing is found, which is expected and normal
+          if (error.code !== 1 && error.code !== 'ENOENT') {
+            console.warn(`[WARN] Could not check port ${port} for processes: ${error.message}`);
+          }
+          // Exit code 1 means no processes found - this is normal, silently continue
         }
       }
 
       // Also find processes in the workspace directory (pnpm, node, vite, etc.)
-      const workspaceProcesses = await execAsync(
-        `pgrep -f "${cwd}" || true`,
-        { cwd }
-      );
-      const wpids = workspaceProcesses.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
-      for (const pid of wpids) {
-        if (pid && !isNaN(pid) && !this.backgroundProcesses.some(p => p.pid === pid)) {
-          this.backgroundProcesses.push({ pid, description: `process in ${cwd}` });
+      try {
+        const workspaceProcesses = await execAsync(
+          `pgrep -f "${cwd}" || true`,
+          { cwd }
+        );
+        const wpids = workspaceProcesses.stdout.trim().split('\n').filter(Boolean).map(p => parseInt(p, 10));
+        for (const pid of wpids) {
+          if (pid && !isNaN(pid) && !this.backgroundProcesses.some(p => p.pid === pid)) {
+            this.backgroundProcesses.push({ pid, description: `process in ${cwd}` });
+          }
+        }
+      } catch (error: any) {
+        // pgrep returns exit code 1 when nothing is found, which is normal
+        if (error.code !== 1 && error.code !== 'ENOENT') {
+          console.warn(`[WARN] Could not check workspace for processes: ${error.message}`);
         }
       }
-    } catch (error) {
-      // Don't fail if we can't track processes - just log
-      console.warn(`[WARN] Could not track background processes: ${error}`);
+    } catch (error: any) {
+      // Only log unexpected errors
+      if (error.code !== 1 && error.code !== 'ENOENT') {
+        console.warn(`[WARN] Could not track background processes: ${error.message}`);
+      }
     }
   }
 
