@@ -8,7 +8,7 @@ import { ExtractionAgent } from './extraction/index.js';
 
 async function main() {
   console.log('[DEBUG] Starting tutorial validator CLI');
-  
+
   const args = process.argv.slice(2);
   const tutorialPath = args.find(a => !a.startsWith('-'));
   if (!tutorialPath) {
@@ -39,26 +39,22 @@ async function main() {
   });
 
   let priorFailures: FailureDossier[] = [];
-  if (priorFailures.length > 0) {
-    console.log(`[DEBUG] Starting with ${priorFailures.length} prior failure(s)`);
-  }
-  
-  const extractionAgent = new ExtractionAgent({ priorFailures, tutorialPath });
+  const extractionAgent = new ExtractionAgent(tutorialPath);
   console.log('[DEBUG] Initialized ExtractionAgent');
-  
+
   for (let iter = 1; iter <= maxIters; iter++) {
     console.log(`\n[DEBUG] ========== Iteration ${iter}/${maxIters} ==========`);
-    
+
     console.log(`[DEBUG] Extracting steps from tutorial...`);
     const startExtract = Date.now();
-    const spec = await extractionAgent.extractSteps(tutorial);
+    const spec = await extractionAgent.extractSteps(tutorial, { priorFailures });
     const extractDuration = Date.now() - startExtract;
     console.log(`[DEBUG] Step extraction completed in ${extractDuration}ms`);
     console.log(`[DEBUG] Extracted ${spec.steps.length} step(s)`);
     if (spec.metadata?.title) {
       console.log(`[DEBUG] Tutorial title: ${spec.metadata.title}`);
     }
-    
+
     // Validate before running
     console.log('[DEBUG] Validating extracted spec against schema...');
     const parse = TutorialSpecSchema.safeParse(spec);
@@ -83,7 +79,7 @@ async function main() {
 
     console.log('[DEBUG] Initializing TutorialExecutor...');
     const executor = new TutorialExecutor(spec, undefined, { debugScreenshots });
-    
+
     console.log('[DEBUG] Executing tutorial steps...');
     const startExecute = Date.now();
     const result = await executor.execute().finally(() => executor.cleanup(keepWorkspace));
@@ -102,18 +98,18 @@ async function main() {
 
     console.log('[DEBUG] Tutorial execution failed - analyzing failure...');
     if (execVerbose) printStepResults(result);
-    
+
     const failingStep = result.stepResults.find((s: any) => !s.success);
     console.log(`[DEBUG] First failing step: ${failingStep?.stepId} (step ${failingStep?.stepNumber})`);
     if (failingStep?.error) {
       console.log(`[DEBUG] Error: ${failingStep.error}`);
     }
-    
+
     const dossier = buildFailureDossier(result, spec);
     priorFailures.push(dossier);
     console.log(`[DEBUG] Created failure dossier for step ${dossier.summary.stepId}`);
     console.log(`[DEBUG] Total prior failures: ${priorFailures.length}`);
-    
+
     if (iter < maxIters) {
       console.log(`[DEBUG] Retrying with failure context...`);
     }
@@ -136,11 +132,11 @@ function loadTutorialInput(p: string): TutorialInput {
   const abs = resolve(p);
   const isDir = statSync(abs).isDirectory();
   console.log(`[DEBUG] Resolved tutorial path: ${abs} (${isDir ? 'directory' : 'file'})`);
-  
+
   const paths = isDir
     ? walk(abs).filter(f => ['.md', '.mdx'].includes(extname(f)))
     : [abs];
-  
+
   console.log(`[DEBUG] Found ${paths.length} file(s) to process`);
   return { files: paths.map(path => ({ path, contents: readFileSync(path, 'utf-8') })) };
 }
@@ -175,7 +171,7 @@ function buildFailureDossier(result: any, spec: TutorialSpec): ExecutionFailureD
   console.log('[DEBUG] Building failure dossier...');
   const failing = result.stepResults.find((s: any) => !s.success);
   const failingStep = spec.steps.find(s => s.id === failing?.stepId);
-  
+
   const dossier = {
     kind: 'execution-failure' as const,
     summary: {
@@ -188,10 +184,10 @@ function buildFailureDossier(result: any, spec: TutorialSpec): ExecutionFailureD
     output: failing?.output?.slice(0, 8000) || '',
     workspaceRoot: result.workspaceRoot,
   };
-  
+
   console.log(`[DEBUG] Failure dossier created for step ${dossier.summary.stepId} (${dossier.summary.stepType})`);
   console.log(`[DEBUG] Output length: ${dossier.output.length} chars`);
-  
+
   return dossier;
 }
 

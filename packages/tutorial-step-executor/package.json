@@ -24,9 +24,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "@types/js-yaml": "^4.0.9"
   },
   "dependencies": {
     "js-yaml": "^4.1.0",

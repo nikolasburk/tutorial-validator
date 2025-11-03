@@ -45,7 +45,7 @@ export type FailureDossier = ExecutionFailureDossier | SchemaValidationDossier;
  */
 export interface ExtractOptions {
   priorFailures?: FailureDossier[];
-  tutorialPath: string;
+  tutorialPath?: string;
 }
 
 /**

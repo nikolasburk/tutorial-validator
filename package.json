@@ -7,10 +7,12 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "clean": "rm -rf node_modules packages/*/node_modules && pnpm install && pnpm -r clean"
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.6"
   }
 }

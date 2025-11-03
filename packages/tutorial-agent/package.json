@@ -9,6 +9,7 @@
     "tutorial-validator": "./dist/cli.js"
   },
   "scripts": {
+    "dev": "tsx src/cli.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "echo \"No tests yet\""
@@ -17,10 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@tutorial-validator/step-executor": "workspace:*"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3"
+    "@tutorial-validator/step-executor": "workspace:*",
+    "ai": "^5.0.86",
+    "ai-sdk-ollama": "^1.0.1"
   }
 }
-
