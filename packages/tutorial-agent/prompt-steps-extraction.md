@@ -4,195 +4,141 @@
 
 You are extracting executable tutorial steps from MDX/MD tutorial files and converting them into a structured YAML format that follows the tutorial validator schema. The output must be valid YAML that can be executed deterministically.
 
+## Core Rules (CRITICAL - Read Carefully)
+
+### 1. Required Fields for Every Step
+All steps MUST have:
+- **id**: Descriptive unique identifier (e.g., `"ch1-create-project"`)
+- **type**: One of: `run-command`, `change-file`, `validate`, `browser-action`
+- **stepNumber**: Sequential integer starting at 1 (never restart or skip)
+- **description**: Human-readable explanation of what this step does
+
+### 2. Validation Type Selection
+
+**Quick decision:**
+- Checking if a **file exists or file contents**? → `file-contents`
+- Checking **command output** (pwd, ls, cat)? → `cli-output`  
+- Checking **browser/UI state**? → `browser`
+
+**Most common mistake:** Using `file-contents` for command outputs like `pwd` or `ls`
+- ❌ WRONG: `type: file-contents, path: "~"` to check pwd
+- ✅ CORRECT: `type: cli-output, command: pwd, check: { matches: pattern }`
+
+### 3. YAML Quoting Rules for searchPattern
+
+The `searchPattern` must match EXACTLY what appears in the source file. Follow these quoting rules:
+
+| Pattern Contains | Use | Example |
+|-----------------|-----|---------|
+| `$` symbol | Single quotes | `'const todos$ = query()'` |
+| Single quotes only | Single quotes, double inner quotes | `'import from ''@pkg/name'''` |
+| `\n` escape sequence | Double quotes | `"line1\n\nline2"` |
+| Single quotes + braces/parentheses | Double quotes | `"'v1.TodoDeleted': ({ id }) => delete()"` |
+| Otherwise | Double quotes | `"function({ param })"` |
+
+**Key insight:** searchPattern uses `.includes()` (literal string matching), not regex. Copy the exact source text and only handle YAML quoting syntax.
+
+### 4. Step Numbering Rules
+- Start at 1
+- Increment sequentially: 1, 2, 3, 4, 5, 6...
+- **Never restart numbering** (not 1,2,3,1,2,3...)
+- **Never skip numbers** (not 1,2,4,7...)
+- Include validation steps in the sequence
+
+### 5. Browser Actions
+When tutorial says "run the app", "test it", or "check the app":
+- **Infer meaningful interactions** based on what was just implemented
+- Don't just wait for page load
+- If it's a form → fill it and submit
+- If it's a list → add an item
+- If it's navigation → navigate or click
+- Use context from the tutorial to determine selectors and actions
+
+### 6. Working Directory
+- Set base `workingDirectory` if tutorial works in a specific project
+- Only add to individual steps if different from base
+- Steps that **create** the project directory should NOT have `workingDirectory`
+
 ## YAML File Structure
 
-### Required Top-Level Fields
-
 ```yaml
-# Schema reference for validation
 # yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
 
 metadata:
   title: "Tutorial Title"
-  description: "Brief description of the tutorial"
-  version: "1.0.0"  # Optional but recommended
+  description: "Brief description"
+  version: "1.0.0"
 
 prerequisites:
   commands:
-    - "command1"  # List all shell commands needed (cd, mkdir, npm, etc.)
-    - "command2"
-  envVars: []  # List environment variables required
-  versions: {}  # Optional: specific tool versions needed
+    - "cd"
+    - "mkdir"
+    - "npm"
+  envVars: []
+  versions: {}
 
-workingDirectory: "project-name"  # Optional: base directory for all steps
+workingDirectory: "project-name"  # Optional
 
 steps:
-  # Array of step objects (see Step Types below)
+  # Array of step objects
 ```
 
-## Step Types
+## Step Types Reference
 
-### 1. Run Command Step
+### run-command
+Execute terminal commands.
 
-**When to use:** Any terminal/command-line instruction.
-
-**Structure:**
 ```yaml
-- id: "unique-step-id"
+- id: "step-id"
   type: "run-command"
   stepNumber: 1
-  description: "Human-readable description of what this step does"
-  command: "the actual command to run"
-  workingDirectory: "optional-subdirectory"  # Only if different from base
-  expectedExitCode: 0  # Optional: expected exit code
+  description: "What this command does"
+  command: "actual command"
+  workingDirectory: "optional-subdir"
+  expectedExitCode: 0  # optional
 ```
 
-**Examples:**
-- Package installations: `pnpm add package-name`
-- File creation: `touch filename.ts`
-- Directory creation: `mkdir -p src/directory`
-- Navigation: `cd project-directory`
-- Running scripts: `npm run build`
+**Examples:** `mkdir dir`, `npm install`, `touch file.txt`, `cd project`
 
-### 2. Change File Step
+### change-file
+Modify file contents. Three subtypes:
 
-**When to use:** Any file modification instruction.
-
-**Three subtypes:**
-
-#### A. Replace Entire File (`type: "replace"`)
-
-**When:** Tutorial shows a complete file or says "replace the file with:"
-
+#### Type A: replace (full file replacement)
 ```yaml
 - id: "step-id"
   type: "change-file"
   stepNumber: 2
-  description: "Create or replace file with new content"
-  workingDirectory: "optional-subdirectory"
+  description: "Create or replace file"
   change:
     type: "replace"
-    path: "relative/path/to/file.ts"
+    path: "src/file.ts"
     contents: |
       // Full file contents here
-      // Use | for multi-line strings
       export const example = "value";
 ```
 
-#### B. Context-Based Change (`type: "context"`)
-
-**When:** Tutorial shows a diff, "add after/before line X", or "update line containing Y"
-
-**CRITICAL - YAML String Quoting Rules for `searchPattern`:**
-
-The `searchPattern` must match EXACTLY what appears in the source file. YAML has strict escaping rules:
-
-**Rule 1: Use SINGLE QUOTES for patterns containing `$`**
-```yaml
-# ❌ WRONG - Will cause "unknown escape sequence" error in double quotes:
-searchPattern: "const todos$ = queryDb(() => tables.todos.select())"
-
-# ✅ CORRECT - Use single quotes to avoid YAML parsing issues with $:
-searchPattern: 'const todos$ = queryDb(() => tables.todos.select())'
-```
-
-**Rule 2: Use SINGLE QUOTES for patterns containing single quotes**
-```yaml
-# ❌ WRONG:
-searchPattern: "import from '@package/name'"
-
-# ✅ CORRECT - Double the inner single quotes:
-searchPattern: 'import from ''@package/name'''
-```
-
-**Rule 3: Use DOUBLE QUOTES for patterns with `\n` escape sequences**
-```yaml
-# ✅ CORRECT:
-searchPattern: "        </div>\n\n        <div className=\"space-y-3\">"
-```
-
-**Rule 4: Use DOUBLE QUOTES for patterns with parentheses or braces (no `$` or single quotes)**
-```yaml
-# ✅ CORRECT:
-searchPattern: "tailwindcss(),"
-```
-
-**Rule 5: Patterns with BOTH single quotes AND braces/parentheses**
-When a pattern contains BOTH literal single quotes (`'text'`) AND braces/parentheses (`{`, `}`, `(`, `)`, etc.), you MUST use DOUBLE QUOTES for the YAML string. This avoids YAML parsing issues since single-quoted YAML strings don't process escape sequences well and braces can cause parsing errors.
-
-```yaml
-# ❌ WRONG - This would need complex escaping in single quotes:
-searchPattern: ''v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),'
-
-# ✅ CORRECT - Double quotes handle both single quotes and braces cleanly:
-searchPattern: "'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),"
-```
-
-**Quick Decision Tree:**
-1. Does pattern contain `\$`? → Use single quotes `'...'` (unless also has braces/parentheses - see Rule 5)
-2. Does pattern contain BOTH single quotes AND braces/parentheses like `{`, `}`, `(`, `)`? → Use double quotes `"..."` (Rule 5)
-3. Does pattern contain single quotes only (no braces/parentheses)? → Use single quotes and double inner quotes: `'text ''inner'' text'`
-4. Does pattern contain `\n` newline escape? → Use double quotes `"..."`
-5. Otherwise → Use double quotes `"..."`
-6. For patterns with actual literal newlines (multiline), use double quotes with `\n`
-
-**Structure:**
+#### Type B: context (add/modify near existing code)
 ```yaml
 - id: "step-id"
   type: "change-file"
   stepNumber: 3
   description: "Add import after existing imports"
-  workingDirectory: "optional-subdirectory"
   change:
     type: "context"
     path: "src/file.ts"
-    searchPattern: 'import { existing } from "package"'  # Must match EXACT text
+    searchPattern: 'import { existing } from "package"'  # Must match EXACTLY
     action: "after"  # or "before" or "replace"
     content: "import { newImport } from 'new-package'"
 ```
 
-**Finding the Right `searchPattern`:**
-- Look at the ACTUAL source code context shown in tutorial
-- Match EXACTLY including whitespace, quotes, parentheses, braces, brackets
-- **CRITICAL: NO ESCAPING NEEDED for pattern matching** - The executor uses literal string matching (`.includes()`), not regex, so copy the exact text from the source file
-- Only handle YAML quoting rules (see Rules 1-5 above) - escaping is only for YAML syntax, not for the pattern itself
-- For variable names with `$` like `todos$`, use `todos$` in the pattern (no escaping needed)
+**Critical:** searchPattern must match the EXACT text including whitespace. See quoting rules in Core Rules section.
 
-**Common Patterns (all show literal source text, no escaping):**
-```yaml
-# Function call - copy exactly as appears:
-searchPattern: "makeWorker({ schema })"
-
-# Object property - copy exactly:
-searchPattern: "text: State.SQLite.text({ default: '' })"
-
-# Import statement - copy exactly (handle YAML quotes):
-searchPattern: 'import { name } from ''@package/name'''
-
-# Variable with $ - copy exactly:
-searchPattern: "const todos$ = queryDb(() => tables.todos.select())"
-
-# JSX/TSX - copy exactly:
-searchPattern: "onChange={(e) => setInput(e.target.value)}"
-
-# Materializer function - copy exactly:
-searchPattern: "'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),"
-```
-
-**Important Reminder:**
-- The `searchPattern` value is searched using JavaScript's `.includes()` method on each line
-- It's **literal string matching**, not regex, so copy the source text exactly
-- The only "escaping" you need to consider is YAML quoting rules (single vs double quotes for the YAML value itself)
-
-#### C. Diff-Based Change (`type: "diff"`)
-
-**When:** Tutorial shows explicit line numbers or line-based diffs
-
+#### Type C: diff (line-based changes)
 ```yaml
 - id: "step-id"
   type: "change-file"
   stepNumber: 4
-  description: "Remove lines 10-15 and insert new content at line 10"
+  description: "Remove and insert specific lines"
   change:
     type: "diff"
     path: "src/file.ts"
@@ -206,587 +152,448 @@ searchPattern: "'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: 
         - "new line 2"
 ```
 
-### 3. Validate Step
+### validate
+Verify results. Three subtypes:
 
-**When to use:** Any instruction to verify/test something worked.
-
-**Structure:**
+#### file-contents (check file existence or contents)
 ```yaml
 - id: "step-id"
   type: "validate"
   stepNumber: 5
   description: "Verify file exists"
   validation:
-    type: "file-contents"  # or "cli-output" or "browser"
-    path: "src/file.ts"  # for file-contents
+    type: "file-contents"
+    path: "src/file.ts"
     check:
       exists: true
-      # OR
-      contains: "expected text"
-      # OR
-      equals: "exact content"
-      # OR
-      matches: "regex pattern"
+      # OR: contains: "text", equals: "exact", matches: "regex"
 ```
 
-**Types:**
-
-#### A. File Contents Validation
+#### cli-output (check command results)
 ```yaml
-validation:
-  type: "file-contents"
-  path: "src/file.ts"
-  check:
-    exists: true  # File must exist
-    # OR one of:
-    contains: "expected substring"
-    equals: "exact match"
-    matches: "regex.*pattern"
+- id: "step-id"
+  type: "validate"
+  stepNumber: 6
+  description: "Verify directory listing"
+  validation:
+    type: "cli-output"
+    command: "ls"
+    check:
+      contains: "expected-file.txt"
+      # OR: containsError: "error", matches: "regex", exitCode: 0
 ```
 
-#### B. CLI Output Validation
+#### browser (check UI state)
 ```yaml
-validation:
-  type: "cli-output"
-  command: "ls"
-  workingDirectory: "optional"
-  check:
-    contains: "expected output"
-    # OR
-    containsError: "error message"
-    # OR
-    matches: "regex.*pattern"
-    # OR
-    exitCode: 0
+- id: "step-id"
+  type: "validate"
+  stepNumber: 7
+  description: "Verify page content"
+  validation:
+    type: "browser"
+    url: "http://localhost:3000"
+    check:
+      containsText: "Welcome"
+      # OR: selector: "h1", elementText: "Title"
+      # OR: attribute: { name: "href", value: "/path" }
+      # OR: evaluate: "document.title === 'Expected'"
 ```
 
-#### C. Browser Validation
-```yaml
-validation:
-  type: "browser"
-  url: "http://localhost:3000"
-  check:
-    containsText: "Welcome"
-    # OR
-    selector: "h1"
-    elementText: "Expected Title"
-    # OR
-    attribute:
-      name: "href"
-      value: "/path"
-    # OR
-    evaluate: "document.title === 'Expected'"
-```
+### browser-action
+Perform UI interactions.
 
-### 4. Browser Action Step
-
-**When to use:** Any instruction that involves interacting with a web application in a browser (clicking, typing, navigating, etc.).
-
-**Key Difference:**
-- **Browser Action Step (`browser-action`)**: Performs interactions (clicks, typing, navigation)
-- **Browser Validation (`validate` with `type: "browser"`)**: Only checks/reads state (doesn't interact)
-
-**Structure:**
 ```yaml
 - id: "step-id"
   type: "browser-action"
-  stepNumber: 6
-  description: "Interact with the application in browser"
-  url: "http://localhost:5173"  # Starting URL
-  timeout: 30000  # Optional: timeout in milliseconds (default: 30000)
-  actions:
-    # Array of actions to perform in sequence
-```
-
-**Available Action Types:**
-
-#### A. Navigate
-Navigate to a different URL.
-
-```yaml
-actions:
-  - type: "navigate"
-    url: "http://localhost:5173/about"
-    waitUntil: "load"  # Optional: "load" | "domcontentloaded" | "networkidle"
-```
-
-#### B. Click
-Click on an element.
-
-```yaml
-actions:
-  - type: "click"
-    selector: "button[type='submit']"
-    waitForVisible: true  # Optional: wait for element to be visible (default: true)
-    timeout: 5000  # Optional: timeout in milliseconds
-```
-
-#### C. Type
-Type text into an input field.
-
-```yaml
-actions:
-  - type: "type"
-    selector: "input[placeholder='Enter todo']"
-    text: "Buy groceries"
-    clear: false  # Optional: clear field first (default: false)
-```
-
-#### D. Wait
-Wait for an element to appear.
-
-```yaml
-actions:
-  - type: "wait"
-    selector: ".todo-item"
-    visible: true  # Optional: wait for visible state (default: true)
-    timeout: 10000  # Optional: timeout in milliseconds
-```
-
-#### E. Evaluate
-Execute custom JavaScript in the page context.
-
-```yaml
-actions:
-  - type: "evaluate"
-    script: "window.localStorage.setItem('key', 'value')"
-```
-
-#### F. Screenshot
-Take a screenshot (useful for debugging/verification).
-
-```yaml
-actions:
-  - type: "screenshot"
-    path: "screenshot.png"  # Optional: path to save screenshot
-```
-
-**Complete Example:**
-```yaml
-- id: "ch3-test-todo-app"
-  type: "browser-action"
   stepNumber: 8
-  description: "Test adding a todo item in the browser"
+  description: "Test adding a todo item"
   url: "http://localhost:5173"
+  timeout: 30000  # optional
   actions:
     - type: "wait"
       selector: "body"
       visible: true
+    
     - type: "click"
       selector: "input[placeholder*='todo']"
-    - type: "type"
-      selector: "input[placeholder*='todo']"
-      text: "Test todo item"
-    - type: "click"
-      selector: "button[type='submit']"
-    - type: "wait"
-      selector: ".todo-item"
-      visible: true
-```
-
-**Handling Ambiguous Tutorial Instructions:**
-
-Tutorials often say things like "run the app" or "check the app" without specifying exact actions. You need to **infer useful actions** from context.
-
-**Guidelines for Inferring Actions:**
-
-1. **Analyze the Tutorial Context:**
-   - What feature was just implemented? (e.g., "todo list", "search", "form")
-   - What does the screenshot/visual show?
-   - What text describes what the user should see or do?
-
-2. **Common Patterns:**
-
-   **After implementing a form:**
-   ```yaml
-   # Tutorial says: "Run the app and add a todo"
-   actions:
-     - type: "wait"
-       selector: "input[type='text'], input[placeholder*='todo'], input[name*='todo']"
-     - type: "type"
-       selector: "input[type='text'], input[placeholder*='todo'], input[name*='todo']"
-       text: "Test todo"  # Use generic but relevant text
-     - type: "click"
-       selector: "button[type='submit'], button:has-text('Add'), button:has-text('Submit')"
-   ```
-
-   **After implementing a feature that displays data:**
-   ```yaml
-   # Tutorial says: "Check the app, you should see your todos"
-   actions:
-     - type: "wait"
-       selector: ".todo-list, [data-testid='todos'], ul, .items"
-       visible: true
-   ```
-
-   **After implementing navigation/routing:**
-   ```yaml
-   # Tutorial says: "Navigate to the about page"
-   actions:
-     - type: "click"
-       selector: "a[href*='about'], nav a:has-text('About')"
-     # OR
-     - type: "navigate"
-       url: "http://localhost:5173/about"
-   ```
-
-3. **Selector Strategy:**
-
-   Use **multiple selector strategies** to be resilient:
-   - By element type: `input[type='text']`
-   - By placeholder: `input[placeholder*='todo']`
-   - By name attribute: `input[name='todo']`
-   - By CSS classes: `.todo-input`
-   - By text content (if supported): `button:has-text('Add')`
-   - By data attributes: `[data-testid='add-button']`
-
-   **However, use the most specific selector that matches the tutorial context.** If the tutorial shows specific CSS classes or IDs, use those.
-
-4. **When Tutorial Shows Specific UI:**
-   - If tutorial shows a screenshot: identify visible elements (buttons, inputs, headings)
-   - If tutorial shows code with `className` or `id`: use those in selectors
-   - If tutorial describes specific text: use text-based selectors
-
-5. **When Tutorial is Vague:**
-   - **Default action**: At minimum, wait for the page to load and verify main content is visible
-   - **If it's a form**: Fill it with a test value and submit
-   - **If it's a list/display**: Wait for the container element
-   - **If it's navigation**: Click the most obvious navigation element or navigate directly
-
-**Example: Handling Vague Instructions**
-
-```yaml
-# Tutorial says: "Run the development server and check the app"
-# Context: Just created a todo app with an input and submit button
-
-- id: "ch3-run-dev-server"
-  type: "run-command"
-  stepNumber: 7
-  description: "Start development server"
-  command: "pnpm dev"
-  workingDirectory: "todo-app"
-
-- id: "ch3-wait-server-ready"
-  type: "run-command"
-  stepNumber: 8
-  description: "Wait for server to be ready"
-  command: "sleep 5"
-
-- id: "ch3-test-app"
-  type: "browser-action"
-  stepNumber: 9
-  description: "Test the todo app by adding an item"
-  url: "http://localhost:5173"
-  actions:
-    - type: "wait"
-      selector: "body"
-      visible: true
-    - type: "click"
-      selector: "input[type='text'], input[placeholder*='todo']"
-    - type: "type"
-      selector: "input[type='text'], input[placeholder*='todo']"
-      text: "Learn LiveStore"
-    - type: "click"
-      selector: "button[type='submit'], button:has-text('Add')"
-    - type: "wait"
-      selector: ".todo-item, li, [data-testid='todo']"
-      visible: true
-
-- id: "ch3-validate-todo-added"
-  type: "validate"
-  stepNumber: 10
-  description: "Verify todo item appears in the list"
-  validation:
-    type: "browser"
-    url: "http://localhost:5173"
-    check:
-      containsText: "Learn LiveStore"
-```
-
-**Determining the URL:**
-
-- Tutorial explicitly mentions URL: use that (e.g., "http://localhost:3000", "http://localhost:5173")
-- Tutorial mentions port: infer `http://localhost:{port}`
-- Common defaults:
-  - Vite/React: `http://localhost:5173`
-  - Next.js: `http://localhost:3000`
-  - Create React App: `http://localhost:3000`
-- If tutorial shows a terminal output with a URL, use that
-- If completely unclear, use `http://localhost:3000` as default
-
-**Best Practices:**
-
-1. **Always start with a wait** for page load: `wait` for `body` or main container
-2. **Use descriptive test data**: Use text that makes sense in context (e.g., "Test todo" for a todo app, not "asdf")
-3. **Chain actions logically**: wait → interact → wait for result
-4. **Be resilient with selectors**: Use multiple fallback selectors when tutorial doesn't specify
-5. **Match tutorial intent**: If tutorial says "add a todo", actually add one - don't just check if the page loads
-6. **Follow with validation**: After browser actions, often add a browser validation step to verify the result
-
-## Step Extraction Guidelines
-
-### From Tutorial Text
-
-1. **Identify Command Steps:**
-   - Look for code blocks with shell commands
-   - Commands like `npm install`, `mkdir`, `touch`, etc.
-   - Commands inside `<Tabs>` or similar UI components
-
-2. **Identify File Changes:**
-   - Look for code blocks with file paths as titles: ````ts title="path/to/file"`
-   - Look for diff blocks: ````diff`
-   - Look for phrases like "add this to", "update", "replace", "modify"
-   - Track file state through tutorial to find exact context
-
-3. **Identify Browser Action Steps:**
-
-   ⚠️ **CRITICAL:** When tutorial says "run the app", "try it out", "test it", "check the app", or similar phrases, you MUST create browser-action steps that **actually interact with the feature** (fill forms, click buttons, navigate), not just validation that the page loads. Infer meaningful actions from the context of what was just implemented.
-   
-   - Look for instructions like "run the app", "open in browser", "test the app"
-   - Phrases like "click the button", "fill in the form", "add a todo"
-   - When tutorial shows screenshots or describes UI interactions
-   - After implementing features that require user interaction
-   - Often appears after starting a dev server
-
-4. **Identify Validation Steps:**
-   - Often implicit - add validation after important steps
-   - "Verify that...", "Check that...", "Make sure..."
-   - After file creation: verify it exists
-   - After commands: verify expected output
-   - After UI changes: verify in browser (use browser validation type)
-   - After browser actions: verify the action had the expected effect
-
-### Step Numbering
-
-- Increment sequentially: 1, 2, 3, 4...
-- Include validation steps in sequence
-- Number ALL steps, even if tutorial doesn't explicitly number them
-
-### ID Naming Convention
-
-Use descriptive, unique IDs:
-- Format: `chapter-number-step-description`
-- Examples: `ch1-create-project`, `ch3-install-deps`, `ch5-add-feature`
-
-### Working Directory Handling
-
-- Set base `workingDirectory` if tutorial works in a specific project directory
-- Only add `workingDirectory` to individual steps if they need a different directory
-- Steps that create/navigate to project directory should NOT have `workingDirectory`
-
-### Handling Tabs/Alternatives
-
-If tutorial shows alternatives (e.g., bun vs pnpm):
-- Choose one canonical option (usually the first mentioned)
-- OR create separate steps for each option
-- Note in description which option is used
-
-### Command Extraction
-
-- Extract EXACT commands as shown
-- Preserve flags and options: `pnpm add -D package-name`
-- Handle multi-line commands appropriately
-- Include version pins if specified: `@package/name@1.2.3`
-
-## Common Patterns
-
-### Package Installation
-```yaml
-- id: "install-deps"
-  type: "run-command"
-  stepNumber: 1
-  description: "Install project dependencies"
-  command: "pnpm install"
-  workingDirectory: "project-name"
-```
-
-### File Creation with Content
-```yaml
-- id: "create-config"
-  type: "change-file"
-  stepNumber: 2
-  description: "Create configuration file"
-  change:
-    type: "replace"
-    path: "config.json"
-    contents: |
-      {
-        "setting": "value"
-      }
-```
-
-### Adding Import After Existing Imports
-```yaml
-- id: "add-import"
-  type: "change-file"
-  stepNumber: 3
-  description: "Add new import statement"
-  change:
-    type: "context"
-    path: "src/main.ts"
-    searchPattern: 'import { existing } from ''package'''
-    action: "after"
-    content: "import { newImport } from 'new-package'"
-```
-
-### Updating Function Call
-```yaml
-- id: "update-function"
-  type: "change-file"
-  stepNumber: 4
-  description: "Update function call to include new parameter"
-  change:
-    type: "context"
-    path: "src/file.ts"
-    searchPattern: "oldFunction({ param: value })"
-    action: "replace"
-    content: "oldFunction({\n    param: value,\n    newParam: newValue\n  })"
-```
-
-### Testing Application in Browser
-```yaml
-- id: "test-app"
-  type: "browser-action"
-  stepNumber: 5
-  description: "Test the application by adding a todo item"
-  url: "http://localhost:5173"
-  actions:
-    - type: "wait"
-      selector: "body"
-    - type: "click"
-      selector: "input[placeholder*='todo']"
+      waitForVisible: true  # optional
+    
     - type: "type"
       selector: "input[placeholder*='todo']"
       text: "Buy milk"
+      clear: false  # optional
+    
     - type: "click"
       selector: "button[type='submit']"
+    
     - type: "wait"
       selector: ".todo-item"
       visible: true
+    
+    # Other action types:
+    # - type: "navigate", url: "http://..."
+    # - type: "evaluate", script: "window.localStorage.set(...)"
+    # - type: "screenshot", path: "screenshot.png"
 ```
 
-## Quality Checklist
+**Selector strategy:** Use multiple fallback approaches when tutorial is vague:
+- Element type: `input[type='text']`
+- Placeholder: `input[placeholder*='todo']`
+- Name attribute: `input[name='todo']`
+- CSS classes: `.todo-input`
+- Text content: `button:has-text('Add')`
 
-Before finalizing the YAML:
+**Determining URL:** Check tutorial for explicit URL/port, or use common defaults:
+- Vite/React: `http://localhost:5173`
+- Next.js: `http://localhost:3000`
+- Create React App: `http://localhost:3000`
 
-- [ ] All `searchPattern` values follow quoting rules (single quotes for `\$` and inner single quotes)
-- [ ] All steps have unique IDs
-- [ ] All steps have sequential stepNumbers
-- [ ] All required fields are present (id, type, stepNumber)
-- [ ] File paths are relative to workingDirectory
+## Common Validation Patterns
+
+```yaml
+# Verify pwd shows correct directory
+validation:
+  type: cli-output
+  command: pwd
+  check:
+    matches: ".*/terminal-tutorial$"
+
+# Verify ls shows file in listing
+validation:
+  type: cli-output
+  command: ls
+  check:
+    contains: "notes.txt"
+
+# Verify file exists
+validation:
+  type: file-contents
+  path: "notes.txt"
+  check:
+    exists: true
+
+# Verify file content
+validation:
+  type: cli-output
+  command: "cat notes.txt"
+  check:
+    contains: "Hello, Terminal!"
+```
+
+## Common Mistakes to Avoid
+
+| ❌ Wrong | ✅ Correct | Why |
+|---------|-----------|-----|
+| `type: file-contents, path: "~"` for pwd check | `type: cli-output, command: pwd` | Tilde not expanded, pwd is a command |
+| `type: file-contents, path: dir` for ls check | `type: cli-output, command: ls` | ls is a command, not file content |
+| Step numbers: 1,2,3,1,2,3 | Step numbers: 1,2,3,4,5,6 | Must be sequential, never restart |
+| Missing `description` field | All steps include `description` | Required field |
+| `searchPattern: "todos$..."` (double quotes with $) | `searchPattern: 'todos$...'` (single quotes) | YAML escaping for $ |
+| Browser action just waits for body | Browser action interacts with feature | Must test the actual functionality |
+
+## Step Extraction Guidelines
+
+### Identify Command Steps
+- Code blocks with shell commands
+- Commands: `npm install`, `mkdir`, `touch`, `cd`, etc.
+- Commands inside `<Tabs>` or UI components
+
+### Identify File Changes
+- Code blocks with file path titles: ````ts title="path/to/file"`
+- Diff blocks: ````diff`
+- Phrases: "add this to", "update", "replace", "modify"
+- Track file state through tutorial for context
+
+### Identify Browser Action Steps
+⚠️ **CRITICAL:** "run the app", "try it", "test it" means create steps that **interact with the feature** (fill forms, click buttons), not just validate page loads.
+
+Look for:
+- "run the app", "open in browser", "test the app"
+- "click the button", "fill in the form", "add a todo"
+- Screenshots or UI interaction descriptions
+- After implementing features requiring user interaction
+- After starting a dev server
+
+### Identify Validation Steps
+Often implicit - add validation after important steps:
+- "Verify that...", "Check that...", "Make sure..."
+- After file creation → verify exists
+- After commands → verify output
+- After UI changes → verify in browser
+- After browser actions → verify expected effect
+
+## Pre-Generation Checklist
+
+Before generating YAML, verify:
+
+**Required Fields:**
+- [ ] Every step has `id`, `type`, `stepNumber`, `description`
+- [ ] All IDs are unique and descriptive (e.g., `ch1-create-dir`)
+- [ ] All descriptions explain what the step does
+
+**Step Numbering:**
+- [ ] Steps start at 1
+- [ ] Steps increment sequentially: 1, 2, 3, 4, 5...
+- [ ] No number repeats or restarts
+- [ ] No skipped numbers
+
+**Validation Types:**
+- [ ] pwd validation uses `cli-output` with `matches` pattern
+- [ ] ls validation uses `cli-output` with `contains` check
+- [ ] File existence uses `file-contents` with `exists: true`
+- [ ] File content reading uses `cli-output` with `cat` command
+- [ ] No validations check `~` as a path
+- [ ] No `file-contents` validations for command outputs
+
+**searchPattern:**
+- [ ] All `searchPattern` values follow quoting rules
+- [ ] Patterns with `$` use single quotes
+- [ ] Patterns with single quotes use proper escaping
+- [ ] Patterns match EXACT source text
+
+**Browser Actions:**
+- [ ] Browser actions have meaningful interactions (not just "wait for body")
+- [ ] URLs are correct (check tutorial for explicit URLs/ports)
+- [ ] Selectors are specific when possible, resilient when vague
+- [ ] Validation steps added after browser actions
+
+**Other:**
 - [ ] Commands are exact matches to tutorial
-- [ ] Browser action steps have meaningful actions inferred from context (not just "wait for body")
-- [ ] Browser action URLs are correct (check tutorial for explicit URLs or port numbers)
-- [ ] Selectors in browser actions are specific when possible, resilient when tutorial is vague
-- [ ] Validation steps are added after important operations (including after browser actions)
+- [ ] File paths are relative to workingDirectory
 - [ ] Prerequisites list all needed commands
 - [ ] YAML is valid and indented correctly (2 spaces)
+- [ ] Early steps creating project have no `workingDirectory`
 
-## Example: Complete Tutorial Step
+## Complete Example
 
 ```yaml
 # yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
 
 metadata:
-  title: "React Todo App Tutorial"
-  description: "Build a todo app with React and LiveStore"
+  title: "Terminal Basics Tutorial"
+  description: "Learn essential terminal commands"
   version: "1.0.0"
 
 prerequisites:
   commands:
-    - "pnpm"
     - "cd"
     - "mkdir"
     - "touch"
-
-workingDirectory: "todo-app"
+    - "ls"
+    - "pwd"
+    - "echo"
+    - "cat"
 
 steps:
-  - id: "ch1-create-project"
+  # Step 1: Create directory
+  - id: "step-1-create-dir"
     type: "run-command"
     stepNumber: 1
-    description: "Create new project directory"
-    command: "mkdir todo-app"
+    description: "Create terminal-tutorial directory"
+    command: "mkdir terminal-tutorial"
 
-  - id: "ch1-validate-project"
+  # Step 2: Validate directory created
+  - id: "step-2-validate-dir"
     type: "validate"
     stepNumber: 2
-    description: "Verify project directory was created"
+    description: "Verify terminal-tutorial directory exists"
+    validation:
+      type: "cli-output"
+      command: "ls"
+      check:
+        contains: "terminal-tutorial"
+
+  # Step 3: Navigate into directory
+  - id: "step-3-navigate"
+    type: "run-command"
+    stepNumber: 3
+    description: "Change into terminal-tutorial directory"
+    command: "cd terminal-tutorial"
+    workingDirectory: "terminal-tutorial"
+
+  # Step 4: Verify location
+  - id: "step-4-validate-location"
+    type: "validate"
+    stepNumber: 4
+    description: "Verify current directory is terminal-tutorial"
+    validation:
+      type: "cli-output"
+      command: "pwd"
+      check:
+        matches: ".*/terminal-tutorial$"
+
+  # Step 5: Create file
+  - id: "step-5-create-file"
+    type: "run-command"
+    stepNumber: 5
+    description: "Create notes.txt file"
+    command: "touch notes.txt"
+    workingDirectory: "terminal-tutorial"
+
+  # Step 6: Verify file exists
+  - id: "step-6-validate-file"
+    type: "validate"
+    stepNumber: 6
+    description: "Verify notes.txt was created"
     validation:
       type: "file-contents"
-      path: "todo-app"
+      path: "notes.txt"
       check:
         exists: true
 
-  - id: "ch2-install-deps"
+  # Step 7: Write to file
+  - id: "step-7-write-content"
     type: "run-command"
-    stepNumber: 3
-    description: "Install React dependencies"
-    command: "pnpm add react react-dom"
-    workingDirectory: "todo-app"
-
-  - id: "ch3-create-component"
-    type: "change-file"
-    stepNumber: 4
-    description: "Create main App component"
-    change:
-      type: "replace"
-      path: "src/App.tsx"
-      contents: |
-        import { useState } from 'react';
-
-        function App() {
-          const [todos, setTodos] = useState([]);
-          return <div>Todo App</div>;
-        }
-
-        export default App;
-
-  - id: "ch4-update-component"
-    type: "change-file"
-    stepNumber: 5
-    description: "Add LiveStore integration"
-    change:
-      type: "context"
-      path: "src/App.tsx"
-      searchPattern: "import { useState } from 'react';"
-      action: "after"
-      content: "import { useStore } from '@livestore/react';"
-
-  - id: "ch4-update-hook"
-    type: "change-file"
-    stepNumber: 6
-    description: "Replace useState with LiveStore query"
-    change:
-      type: "context"
-      path: "src/App.tsx"
-      searchPattern: 'const [todos, setTodos] = useState([]);'
-      action: "replace"
-      content: "  const { store } = useStore();\n  const todos = store.useQuery(todos$);"
-
-  - id: "ch4-validate-update"
-    type: "validate"
     stepNumber: 7
-    description: "Verify App.tsx contains LiveStore imports"
+    description: "Write text to notes.txt"
+    command: 'echo "Hello, Terminal!" > notes.txt'
+    workingDirectory: "terminal-tutorial"
+
+  # Step 8: Verify file content
+  - id: "step-8-validate-content"
+    type: "validate"
+    stepNumber: 8
+    description: "Verify notes.txt contains expected text"
     validation:
-      type: "file-contents"
-      path: "src/App.tsx"
+      type: "cli-output"
+      command: "cat notes.txt"
       check:
-        contains: "@livestore/react"
+        contains: "Hello, Terminal!"
+```
+
+## Pattern Library: Command + Validation Pairs
+
+### Pattern: Navigate and Verify
+```yaml
+- id: "navigate-to-x"
+  type: "run-command"
+  stepNumber: N
+  description: "Navigate to X directory"
+  command: "cd X"
+
+- id: "validate-location"
+  type: "validate"
+  stepNumber: N+1
+  description: "Verify in X directory"
+  validation:
+    type: "cli-output"
+    command: "pwd"
+    check:
+      matches: ".*/X$"
+```
+
+### Pattern: Create File and Verify
+```yaml
+- id: "create-file"
+  type: "run-command"
+  stepNumber: N
+  description: "Create file"
+  command: "touch file.txt"
+
+- id: "validate-file"
+  type: "validate"
+  stepNumber: N+1
+  description: "Verify file exists"
+  validation:
+    type: "file-contents"
+    path: "file.txt"
+    check:
+      exists: true
+```
+
+### Pattern: Write and Verify Content
+```yaml
+- id: "write-file"
+  type: "run-command"
+  stepNumber: N
+  description: "Write to file"
+  command: 'echo "Hello" > file.txt'
+
+- id: "validate-content"
+  type: "validate"
+  stepNumber: N+1
+  description: "Verify content"
+  validation:
+    type: "cli-output"
+    command: "cat file.txt"
+    check:
+      contains: "Hello"
+```
+
+### Pattern: List Directory and Verify
+```yaml
+- id: "create-item"
+  type: "run-command"
+  stepNumber: N
+  description: "Create directory/file"
+  command: "mkdir folder"
+
+- id: "validate-listing"
+  type: "validate"
+  stepNumber: N+1
+  description: "Verify appears in listing"
+  validation:
+    type: "cli-output"
+    command: "ls"
+    check:
+      contains: "folder"
+```
+
+### Pattern: Test Application
+```yaml
+- id: "start-server"
+  type: "run-command"
+  stepNumber: N
+  description: "Start dev server"
+  command: "npm run dev"
+
+- id: "wait-ready"
+  type: "run-command"
+  stepNumber: N+1
+  description: "Wait for server"
+  command: "sleep 5"
+
+- id: "test-app"
+  type: "browser-action"
+  stepNumber: N+2
+  description: "Test the feature"
+  url: "http://localhost:5173"
+  actions:
+    - type: "wait"
+      selector: "body"
+    - type: "type"
+      selector: "input"
+      text: "Test input"
+    - type: "click"
+      selector: "button[type='submit']"
+    - type: "wait"
+      selector: ".result"
+
+- id: "validate-result"
+  type: "validate"
+  stepNumber: N+3
+  description: "Verify result appears"
+  validation:
+    type: "browser"
+    url: "http://localhost:5173"
+    check:
+      containsText: "Test input"
 ```
 
 ## Critical Reminders
 
-1. **YAML Quoting is Critical:** The most common error is incorrect quoting of `searchPattern`. Always check if pattern contains `\$` or single quotes.
+1. **Validation types:** Most common error is using `file-contents` for command output. Use `cli-output` for pwd, ls, cat, etc.
 
-2. **Exact Matching:** `searchPattern` must match the EXACT text in the file, including whitespace and special characters.
+2. **Step numbering:** Must be sequential 1,2,3,4... Never restart (1,2,3,1,2,3) or skip numbers.
 
-3. **Escape Regex Special Chars:** In patterns, escape: `(`, `)`, `{`, `}`, `[`, `]`, `.`, `*`, `+`, `?`, `^`, `$`, `|`
+3. **Required fields:** Every step needs id, type, stepNumber, description. Missing fields cause failures.
 
-4. **Sequential Validation:** Add validation steps after important operations to catch errors early.
+4. **YAML quoting:** searchPattern with `$` needs single quotes. With both quotes and braces, use double quotes.
 
-5. **Be Comprehensive:** Extract ALL executable steps from tutorial, even if tutorial treats some as implicit.
+5. **Exact matching:** searchPattern uses `.includes()` literal matching. Copy exact source text, handle YAML quoting only.
 
-6. **Infer Browser Actions:** When tutorials say "run the app" or "test it", infer meaningful actions based on what was just implemented. Don't just wait for page load - actually interact with the feature (fill forms, click buttons, etc.).
+6. **Browser actions:** When tutorial says "test the app", infer meaningful interactions based on context. Don't just wait for page load.
 
-7. **Context is Key for Browser Steps:** Use the tutorial's context (recently implemented features, screenshots, code examples) to determine what selectors and actions make sense. If tutorial shows specific classNames or IDs in code, use those in selectors.
+7. **Working directory:** Steps that create the project directory should NOT have workingDirectory set.
+
+8. **Tilde expansion:** Never use `~` in paths. It won't be expanded. Use command output validation instead.

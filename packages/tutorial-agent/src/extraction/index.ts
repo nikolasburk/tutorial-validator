@@ -1,5 +1,3 @@
-import { ollama } from 'ai-sdk-ollama';
-import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { TutorialSpec } from '@tutorial-validator/step-executor';
 import { TutorialSpecSchema } from '@tutorial-validator/step-executor';
@@ -7,6 +5,7 @@ import type { FailureDossier, ExtractOptions, TutorialInput } from '../shared/in
 import { fileURLToPath } from 'url';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { OllamaClient } from './ollama-client.js';
 
 // Wrapper schema that includes both the spec and optional learnings reflection
 const ExtractionResultSchema = z.object({
@@ -21,19 +20,19 @@ const ExtractionResultSchema = z.object({
 export class ExtractionAgent {
   private promptDoc: string;
   private tutorialTitle?: string;
-  private model: ReturnType<typeof ollama>;
+  private ollamaClient: OllamaClient;
 
   constructor(tutorialPath: string) {
     this.promptDoc = this.loadPromptDoc();
-    // console.log('[DEBUG] promptDoc:', this.promptDoc);
     this.tutorialTitle = this.inferTitle(tutorialPath);
     
-    // Initialize Ollama provider with Qwen2.5
+    // Initialize Ollama client
     // Default: qwen2.5:7b-instruct (7B model)
     // Alternative: qwen2.5:72b-instruct for better quality (requires more RAM)
-    this.model = ollama('qwen2.5:7b-instruct', {
-      // Optional: specify custom base URL if Ollama is running elsewhere
-      // baseURL: 'http://localhost:11434',
+    this.ollamaClient = new OllamaClient({
+      model: 'qwen2.5:7b-instruct',
+      // baseURL: 'http://localhost:11434', // Optional: specify custom base URL
+      timeoutMs: 3 * 60 * 1000, // 3 minutes
     });
   }
 
@@ -59,56 +58,27 @@ export class ExtractionAgent {
         `any significant changes based on the failures, you can leave this field empty.`;
     }
 
-    // Add debugging for prompt size
-    const promptSize = prompt.length;
-    const promptSizeKB = (promptSize / 1024).toFixed(2);
-    console.log(`[DEBUG] Prompt size: ${promptSize} chars (${promptSizeKB} KB)`);
     if (hasPriorFailures) {
       console.log(`[DEBUG] Prior failures count: ${options?.priorFailures?.length || 0}`);
     }
 
     try {
-      const startTime = Date.now();
-      console.log(`[DEBUG] Starting generateObject call at ${new Date().toISOString()}`);
-      
-      // Add a heartbeat to show progress
-      const heartbeatInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const elapsedSeconds = (elapsed / 1000).toFixed(1);
-        console.log(`[DEBUG] ⏳ generateObject still running... (${elapsedSeconds}s elapsed)`);
-      }, 10000); // Log every 10 seconds
-
-      // Add timeout wrapper (3 minutes default)
-      const timeoutMs = 3 * 60 * 1000; // 3 minutes
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`generateObject timeout after ${timeoutMs}ms (${timeoutMs / 1000 / 60} minutes)`));
-        }, timeoutMs);
-      });
-
-      const generatePromise = generateObject({
-        model: this.model,
+      const result = await this.ollamaClient.generateObject({
         schema: ExtractionResultSchema,
         prompt,
-        temperature: 0, // Lower temperature for more consistent structured output
+        temperature: 0,
+        timeoutMs: 20 * 60 * 1000,  // 20 minutes
       });
 
-      const result = await Promise.race([generatePromise, timeoutPromise]);
-      
-      clearInterval(heartbeatInterval);
-      
-      const duration = Date.now() - startTime;
-      const durationSeconds = (duration / 1000).toFixed(2);
-      console.log(`[DEBUG] ✅ generateObject completed in ${durationSeconds}s (${duration}ms)`);
       console.log('[DEBUG] Successfully extracted tutorial spec');
-      if (result.object.learnings) {
-        console.log('[DEBUG] Learnings captured:', result.object.learnings.substring(0, 100) + '...');
+      if (result.learnings) {
+        console.log('[DEBUG] Learnings captured:', result.learnings.substring(0, 100) + '...');
       }
 
       return {
-        spec: result.object.spec as TutorialSpec,
+        spec: result.spec as TutorialSpec,
         prompt,
-        learnings: result.object.learnings,
+        learnings: result.learnings,
       };
     } catch (error) {
       console.error('[ERROR] Failed to extract steps:', error);
@@ -117,16 +87,8 @@ export class ExtractionAgent {
         console.error('[ERROR] Error stack:', error.stack);
       }
       
-      // Return empty spec on error (will be caught by validation)
-      return {
-        spec: {
-          steps: [],
-          metadata: {
-            title: this.tutorialTitle || 'Tutorial',
-          },
-        },
-        prompt,
-      };
+      // Re-throw to fail the entire execution (don't return empty spec)
+      throw error;
     }
   }
 
@@ -238,8 +200,6 @@ export class ExtractionAgent {
       prompt += `4. **What worked before?** - Use the successful steps context to understand the state\n`;
       prompt += `5. **Tutorial intent** - Match the tutorial context to understand what the user should actually do\n\n`;
     }
-
-    // console.log('[DEBUG] Prompt without tutorial content:', prompt);
 
     prompt += `\n## Tutorial Content\n\n${tutorialContent}\n\n`;
     prompt += `\n## Task\n\nExtract executable steps from the tutorial content above and generate a valid TutorialSpec JSON object following the schema and guidelines provided.`;

@@ -125,13 +125,8 @@ async function main() {
       }
       
       const iterationDuration = Date.now() - iterationStartTime;
-      console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
       console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
-      console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
-      if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
-      if (failureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
       console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
-      console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
       continue;
     }
     console.log('[DEBUG] ✅ Schema validation passed');
@@ -175,16 +170,8 @@ async function main() {
       }
       
       const iterationDuration = Date.now() - iterationStartTime;
-      console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
       console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
-      console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
-      if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
-      if (outFileWriteDuration > 0) console.log(`[DEBUG] ⏱️  Output file writing: ${outFileWriteDuration}ms`);
-      console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
-      console.log(`[DEBUG] ⏱️  Step execution: ${executeDuration}ms`);
-      if (finalFailureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Final failure file writing: ${finalFailureWriteDuration}ms`);
       console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
-      console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
       
       writeReport({ ok: true, result, spec, outFile });
       process.exit(0);
@@ -218,17 +205,8 @@ async function main() {
     }
 
     const iterationDuration = Date.now() - iterationStartTime;
-    console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
     console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
-    console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
-    if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
-    if (outFileWriteDuration > 0) console.log(`[DEBUG] ⏱️  Output file writing: ${outFileWriteDuration}ms`);
-    console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
-    console.log(`[DEBUG] ⏱️  Step execution: ${executeDuration}ms`);
-    console.log(`[DEBUG] ⏱️  Failure dossier building: ${dossierDuration}ms`);
-    if (failureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
     console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
-    console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
 
     if (iter < maxIters) {
       console.log(`[DEBUG] Retrying with failure context...`);

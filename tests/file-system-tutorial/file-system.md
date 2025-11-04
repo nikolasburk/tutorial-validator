@@ -9,23 +9,7 @@ Welcome to this hands-on tutorial about using the terminal! You'll learn essenti
 
 ## Getting Started
 
-### Step 1: Navigate to Your Home Directory
-
-Open your terminal and navigate to your home directory:
-```bash
-cd ~
-```
-
-**Validation:** Run the following command to verify you're in your home directory:
-```bash
-pwd
-```
-
-**Expected output:** You should see your home directory path, which will look like:
-- macOS/Linux: `/Users/yourusername` or `/home/yourusername`
-- Windows: `C:\Users\yourusername`
-
-### Step 2: Create a New Directory for This Tutorial
+### Step 1: Create a New Directory for This Tutorial
 
 Create a new directory called `terminal-tutorial`:
 ```bash
@@ -39,7 +23,7 @@ ls
 
 **Expected output:** You should see `terminal-tutorial` in the list of files and directories. The exact output will vary based on what else is in your home directory, but `terminal-tutorial` must appear in the list.
 
-### Step 3: Navigate Into the New Directory
+### Step 2: Navigate Into the New Directory
 
 Change into the `terminal-tutorial` directory:
 ```bash
@@ -55,7 +39,7 @@ pwd
 - macOS/Linux: `/Users/yourusername/terminal-tutorial` or `/home/yourusername/terminal-tutorial`
 - Windows: `C:\Users\yourusername\terminal-tutorial`
 
-### Step 4: Verify the Directory is Empty
+### Step 3: Verify the Directory is Empty
 
 List the contents of the current directory:
 ```bash
@@ -64,7 +48,7 @@ ls
 
 **Expected output:** Nothing should be displayed (empty output), or you might see a message indicating the directory is empty. This confirms you're starting with a clean directory.
 
-### Step 5: Create a New File
+### Step 4: Create a New File
 
 Create a new empty file called `notes.txt`:
 ```bash
@@ -83,7 +67,7 @@ ls
 notes.txt
 ```
 
-### Step 6: Write Content to the File
+### Step 5: Write Content to the File
 
 Add some text to the `notes.txt` file using the `echo` command:
 ```bash
@@ -102,7 +86,7 @@ cat notes.txt
 Hello, Terminal!
 ```
 
-### Step 7: Append More Content to the File
+### Step 6: Append More Content to the File
 
 Add a second line to the file without overwriting the first line:
 ```bash
@@ -122,7 +106,7 @@ Hello, Terminal!
 This is my first tutorial.
 ```
 
-### Step 8: Create Multiple Files
+### Step 7: Create Multiple Files
 
 Create three more files at once:
 ```bash
@@ -142,7 +126,7 @@ file3.txt
 notes.txt
 ```
 
-### Step 9: Create a Subdirectory
+### Step 8: Create a Subdirectory
 
 Create a new directory called `docs`:
 ```bash
@@ -163,7 +147,7 @@ file3.txt
 notes.txt
 ```
 
-### Step 10: Navigate Into the Subdirectory
+### Step 9: Navigate Into the Subdirectory
 
 Change into the `docs` directory:
 ```bash
@@ -179,7 +163,7 @@ pwd
 - macOS/Linux: `/Users/yourusername/terminal-tutorial/docs` or `/home/yourusername/terminal-tutorial/docs`
 - Windows: `C:\Users\yourusername\terminal-tutorial\docs`
 
-### Step 11: Create a File in the Subdirectory
+### Step 10: Create a File in the Subdirectory
 
 Create a file called `readme.txt` in the current directory:
 ```bash
@@ -196,7 +180,7 @@ ls
 readme.txt
 ```
 
-### Step 12: Navigate Back to the Parent Directory
+### Step 11: Navigate Back to the Parent Directory
 
 Go back up one level to the `terminal-tutorial` directory:
 ```bash
