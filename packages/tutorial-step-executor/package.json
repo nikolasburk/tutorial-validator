@@ -29,9 +29,7 @@
     "typescript": "^5.9.3",
     "tsx": "^4.20.6"
   },
-  "dependencies": {
-    "zod": "^4.1.12"
-  },
+  "dependencies": {},
   "optionalDependencies": {
     "playwright": "^1.40.0"
   }

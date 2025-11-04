@@ -22,8 +22,21 @@ export interface ExecutionFailureDossier {
     description?: string;
     error: string;
   };
+  /** The full step definition that was attempted */
+  stepDefinition?: any;
+  /** Successful steps that executed before this failure */
+  successfulStepsBeforeFailure?: Array<{
+    stepId: string;
+    stepNumber: number;
+    description?: string;
+    type?: string;
+  }>;
+  /** The execution output (stdout/stderr combined) */
   output: string;
+  /** Workspace root path where execution occurred */
   workspaceRoot: string;
+  /** Relevant tutorial content snippet for context (if available) */
+  tutorialContext?: string;
 }
 
 /**

@@ -121,10 +121,10 @@ searchPattern: "tailwindcss(),"
 When a pattern contains BOTH literal single quotes (`'text'`) AND braces/parentheses (`{`, `}`, `(`, `)`, etc.), you MUST use DOUBLE QUOTES for the YAML string. This avoids YAML parsing issues since single-quoted YAML strings don't process escape sequences well and braces can cause parsing errors.
 
 ```yaml
-# ❌ WRONG - Single quotes in YAML don't work well with literal braces:
-searchPattern: "'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),"
+# ❌ WRONG - This would need complex escaping in single quotes:
+searchPattern: ''v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),'
 
-# ✅ CORRECT - Use double quotes for YAML value (pattern contains literal braces and single quotes):
+# ✅ CORRECT - Double quotes handle both single quotes and braces cleanly:
 searchPattern: "'v1.TodoDeleted': ({ id }) => tables.todos.delete().where({ id: id }),"
 ```
 

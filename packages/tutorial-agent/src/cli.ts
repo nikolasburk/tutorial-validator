@@ -5,6 +5,7 @@ import { resolve, join, extname, basename } from 'path';
 import type { FailureDossier, ExecutionFailureDossier, TutorialInput } from './shared/index.js';
 import type { TutorialSpec } from '@tutorial-validator/step-executor';
 import { TutorialSpecSchema, TutorialExecutor } from '@tutorial-validator/step-executor';
+import type { StepResult } from '@tutorial-validator/step-executor';
 import { ExtractionAgent } from './extraction/index.js';
 import yaml from 'js-yaml';
 
@@ -57,20 +58,38 @@ async function main() {
   }
 
   for (let iter = 1; iter <= maxIters; iter++) {
+    const iterationStartTime = Date.now();
     console.log(`\n[DEBUG] ========== Iteration ${iter}/${maxIters} ==========`);
 
     const startExtract = Date.now();
-    const { spec, prompt } = await extractionAgent.extractSteps(tutorial, { priorFailures });
+    const { spec, prompt, learnings } = await extractionAgent.extractSteps(tutorial, { priorFailures });
     const extractDuration = Date.now() - startExtract;
+    console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
 
     // Save prompt and YML for this iteration if debugFiles is enabled
+    let fileWriteDuration = 0;
     if (debugFiles && debugDir) {
+      const startFileWrite = Date.now();
       await writeFile(join(debugDir, `prompt-${iter}.md`), prompt, 'utf-8');
       console.log(`[DEBUG] Saved prompt to ${debugDir}/prompt-${iter}.md`);
 
       const ymlContent = yamlFromSpec(spec);
       await writeFile(join(debugDir, `steps-${iter}.yml`), ymlContent, 'utf-8');
       console.log(`[DEBUG] Saved steps to ${debugDir}/steps-${iter}.yml`);
+
+      // Save learnings if available
+      if (learnings) {
+        await writeFile(join(debugDir, `learnings-${iter}.md`), learnings, 'utf-8');
+        console.log(`[DEBUG] Saved learnings to ${debugDir}/learnings-${iter}.md`);
+      }
+      fileWriteDuration = Date.now() - startFileWrite;
+      console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
+    }
+    
+    // Log learnings if available
+    if (learnings) {
+      console.log(`[DEBUG] Learnings from this iteration:`);
+      console.log(`[DEBUG] ${learnings}`);
     }
     console.log(`[DEBUG] Step extraction completed in ${extractDuration}ms`);
     console.log(`[DEBUG] Extracted ${spec.steps.length} step(s)`);
@@ -80,7 +99,11 @@ async function main() {
 
     // Validate before running
     console.log('[DEBUG] Validating extracted spec against schema...');
+    const startValidation = Date.now();
     const parse = TutorialSpecSchema.safeParse(spec);
+    const validationDuration = Date.now() - startValidation;
+    console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
+    
     if (!parse.success) {
       console.log('[DEBUG] ❌ Schema validation failed');
       console.log(`[DEBUG] Validation errors: ${JSON.stringify(parse.error.issues.length)} issue(s)`);
@@ -93,28 +116,47 @@ async function main() {
       console.log(`[DEBUG] Added schema validation failure to priorFailures (total: ${priorFailures.length})`);
       
       // Update failures.md with all failures so far if debugFiles is enabled
+      let failureWriteDuration = 0;
       if (debugFiles && debugDir) {
+        const startFailureWrite = Date.now();
         await writeFailuresFile(debugDir, priorFailures);
+        failureWriteDuration = Date.now() - startFailureWrite;
+        console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
       }
       
+      const iterationDuration = Date.now() - iterationStartTime;
+      console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
+      console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
+      if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
+      if (failureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
+      console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
       continue;
     }
     console.log('[DEBUG] ✅ Schema validation passed');
 
+    let outFileWriteDuration = 0;
     if (outFile) {
       console.log(`[DEBUG] Writing spec to output file: ${outFile}`);
+      const startOutFileWrite = Date.now();
       await import('fs/promises').then(fs => fs.writeFile(outFile, yamlFromSpec(spec), 'utf-8'));
+      outFileWriteDuration = Date.now() - startOutFileWrite;
+      console.log(`[DEBUG] ⏱️  Output file writing: ${outFileWriteDuration}ms`);
       console.log(`[DEBUG] Spec written to ${outFile}`);
     }
 
     console.log('[DEBUG] Initializing TutorialExecutor...');
+    const startExecutorInit = Date.now();
     const executor = new TutorialExecutor(spec, undefined, { debugScreenshots });
+    const executorInitDuration = Date.now() - startExecutorInit;
+    console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
 
     console.log('[DEBUG] Executing tutorial steps...');
     const startExecute = Date.now();
     const result = await executor.execute().finally(() => executor.cleanup(keepWorkspace));
     const executeDuration = Date.now() - startExecute;
-    console.log(`[DEBUG] Execution completed in ${executeDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Step execution: ${executeDuration}ms`);
     console.log(`[DEBUG] Execution result: ${result.success ? '✅ SUCCESS' : '❌ FAILED'}`);
     console.log(`[DEBUG] Steps executed: ${result.stepResults.length}/${spec.steps.length}`);
     console.log(`[DEBUG] Workspace: ${result.workspaceRoot}`);
@@ -124,9 +166,25 @@ async function main() {
       printSuccess(result);
       
       // Write final failures.md (should be empty on success) if debugFiles is enabled
+      let finalFailureWriteDuration = 0;
       if (debugFiles && debugDir) {
+        const startFinalFailureWrite = Date.now();
         await writeFailuresFile(debugDir, priorFailures);
+        finalFailureWriteDuration = Date.now() - startFinalFailureWrite;
+        console.log(`[DEBUG] ⏱️  Final failure file writing: ${finalFailureWriteDuration}ms`);
       }
+      
+      const iterationDuration = Date.now() - iterationStartTime;
+      console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
+      console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
+      if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
+      if (outFileWriteDuration > 0) console.log(`[DEBUG] ⏱️  Output file writing: ${outFileWriteDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Step execution: ${executeDuration}ms`);
+      if (finalFailureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Final failure file writing: ${finalFailureWriteDuration}ms`);
+      console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
+      console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
       
       writeReport({ ok: true, result, spec, outFile });
       process.exit(0);
@@ -141,15 +199,36 @@ async function main() {
       console.log(`[DEBUG] Error: ${failingStep.error}`);
     }
 
-    const dossier = buildFailureDossier(result, spec);
+    const startDossier = Date.now();
+    const dossier = buildFailureDossier(result, spec, tutorial);
+    const dossierDuration = Date.now() - startDossier;
+    console.log(`[DEBUG] ⏱️  Failure dossier building: ${dossierDuration}ms`);
+    
     priorFailures.push(dossier);
     console.log(`[DEBUG] Created failure dossier for step ${dossier.summary.stepId}`);
     console.log(`[DEBUG] Total prior failures: ${priorFailures.length}`);
 
     // Update failures.md with all failures so far if debugFiles is enabled
+    let failureWriteDuration = 0;
     if (debugFiles && debugDir) {
+      const startFailureWrite = Date.now();
       await writeFailuresFile(debugDir, priorFailures);
+      failureWriteDuration = Date.now() - startFailureWrite;
+      console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
     }
+
+    const iterationDuration = Date.now() - iterationStartTime;
+    console.log(`\n[DEBUG] ========== Iteration ${iter} Timing Summary ==========`);
+    console.log(`[DEBUG] ⏱️  Step extraction: ${extractDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Schema validation: ${validationDuration}ms`);
+    if (fileWriteDuration > 0) console.log(`[DEBUG] ⏱️  File writing: ${fileWriteDuration}ms`);
+    if (outFileWriteDuration > 0) console.log(`[DEBUG] ⏱️  Output file writing: ${outFileWriteDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Step execution: ${executeDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Failure dossier building: ${dossierDuration}ms`);
+    if (failureWriteDuration > 0) console.log(`[DEBUG] ⏱️  Failure file writing: ${failureWriteDuration}ms`);
+    console.log(`[DEBUG] ⏱️  Total iteration time: ${iterationDuration}ms`);
+    console.log(`[DEBUG] ========== End Iteration ${iter}/${maxIters} ==========\n`);
 
     if (iter < maxIters) {
       console.log(`[DEBUG] Retrying with failure context...`);
@@ -235,10 +314,27 @@ function printStepResults(result: any) {
   }
 }
 
-function buildFailureDossier(result: any, spec: TutorialSpec): ExecutionFailureDossier {
+function buildFailureDossier(result: any, spec: TutorialSpec, tutorial: TutorialInput): ExecutionFailureDossier {
   console.log('[DEBUG] Building failure dossier...');
   const failing = result.stepResults.find((s: any) => !s.success);
   const failingStep = spec.steps.find(s => s.id === failing?.stepId);
+  const failingIndex = result.stepResults.findIndex((s: any) => !s.success);
+
+  // Get successful steps before failure
+  const successfulSteps = result.stepResults
+    .slice(0, failingIndex)
+    .map((s: StepResult) => {
+      const step = spec.steps.find(st => st.id === s.stepId);
+      return {
+        stepId: s.stepId,
+        stepNumber: s.stepNumber,
+        description: step?.description,
+        type: step?.type,
+      };
+    });
+
+  // Extract tutorial context for the failing step
+  const tutorialContext = extractTutorialContextForStep(tutorial, failingStep);
 
   const dossier = {
     kind: 'execution-failure' as const,
@@ -247,16 +343,72 @@ function buildFailureDossier(result: any, spec: TutorialSpec): ExecutionFailureD
       stepNumber: failing?.stepNumber,
       stepType: (failingStep as any)?.type,
       description: failingStep?.description,
-      error: failing?.error,
+      error: failing?.error || 'Unknown error',
     },
+    stepDefinition: failingStep,
+    successfulStepsBeforeFailure: successfulSteps.length > 0 ? successfulSteps : undefined,
     output: failing?.output?.slice(0, 8000) || '',
     workspaceRoot: result.workspaceRoot,
+    tutorialContext: tutorialContext || undefined,
   };
 
   console.log(`[DEBUG] Failure dossier created for step ${dossier.summary.stepId} (${dossier.summary.stepType})`);
   console.log(`[DEBUG] Output length: ${dossier.output.length} chars`);
+  console.log(`[DEBUG] Successful steps before failure: ${successfulSteps.length}`);
+  if (tutorialContext) {
+    console.log(`[DEBUG] Tutorial context extracted: ${tutorialContext.length} chars`);
+  }
 
   return dossier;
+}
+
+/**
+ * Extract relevant tutorial content context for a given step
+ */
+function extractTutorialContextForStep(tutorial: TutorialInput, step: any): string | null {
+  if (!step || !step.description) {
+    return null;
+  }
+
+  // Try to find the step description or related content in tutorial files
+  const allContent = tutorial.files.map(f => f.contents).join('\n\n');
+  
+  // Look for the step description or step number in the tutorial
+  const stepNumber = step.stepNumber;
+  const stepDescription = step.description;
+  
+  // Try to find a section that mentions this step
+  // Look for step number patterns or description text
+  const patterns = [
+    new RegExp(`(?:step|Step)\\s*${stepNumber}[^\\d]`, 'i'),
+    new RegExp(escapeRegex(stepDescription.substring(0, 50)), 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = allContent.match(pattern);
+    if (match && match.index !== undefined) {
+      // Extract context around the match (500 chars before and after)
+      const start = Math.max(0, match.index - 500);
+      const end = Math.min(allContent.length, match.index + match[0].length + 500);
+      const context = allContent.substring(start, end);
+      
+      // Clean up the context
+      const cleaned = context
+        .replace(/^\s*[\r\n]+/, '') // Remove leading newlines
+        .replace(/[\r\n]+\s*$/, '') // Remove trailing newlines
+        .trim();
+      
+      if (cleaned.length > 100) { // Only return if we found substantial context
+        return cleaned;
+      }
+    }
+  }
+
+  return null;
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function writeFailuresFile(debugDir: string, failures: FailureDossier[]): Promise<void> {
@@ -281,11 +433,29 @@ async function writeFailuresFile(debugDir: string, failures: FailureDossier[]): 
           content += `**Description:** ${failure.summary.description}\n\n`;
         }
         content += `**Error:** ${failure.summary.error}\n\n`;
+        
+        // Include successful steps before failure
+        if (failure.successfulStepsBeforeFailure && failure.successfulStepsBeforeFailure.length > 0) {
+          content += `**Successful Steps Before Failure:**\n\n`;
+          failure.successfulStepsBeforeFailure.forEach((s, i) => {
+            content += `  ${i + 1}. Step ${s.stepNumber} (${s.stepId}): ${s.description || s.type || 'N/A'}\n`;
+          });
+          content += `\n`;
+        }
+        
+        // Include step definition
+        if (failure.stepDefinition) {
+          content += `**Step Definition:**\n\n\`\`\`json\n${JSON.stringify(failure.stepDefinition, null, 2)}\n\`\`\`\n\n`;
+        }
+        
         if (failure.workspaceRoot) {
           content += `**Workspace Root:** ${failure.workspaceRoot}\n\n`;
         }
         if (failure.output) {
           content += `**Output:**\n\n\`\`\`\n${failure.output}\n\`\`\`\n\n`;
+        }
+        if (failure.tutorialContext) {
+          content += `**Relevant Tutorial Context:**\n\n\`\`\`\n${failure.tutorialContext}\n\`\`\`\n\n`;
         }
       }
       
