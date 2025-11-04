@@ -10,11 +10,11 @@ import { resolve } from 'path';
 export class ExtractionAgent {
   private promptDoc: string;
   private tutorialTitle?: string;
-  private priorFailures?: FailureDossier[];
   private model: ReturnType<typeof ollama>;
 
   constructor(tutorialPath: string) {
     this.promptDoc = this.loadPromptDoc();
+    // console.log('[DEBUG] promptDoc:', this.promptDoc);
     this.tutorialTitle = this.inferTitle(tutorialPath);
     
     // Initialize Ollama provider with Qwen2.5
@@ -29,14 +29,12 @@ export class ExtractionAgent {
   async extractSteps(
     tutorial: TutorialInput,
     options?: ExtractOptions,
-  ): Promise<TutorialSpec> {
+  ): Promise<{ spec: TutorialSpec; prompt: string }> {
     console.log('[DEBUG] Extracting steps from tutorial...');
     
     // Build the prompt
     const prompt = this.buildPrompt(tutorial, options?.priorFailures || []);
 
-    console.log('[DEBUG] Prompt:', prompt);
-    
     try {
       const result = await generateObject({
         model: this.model,
@@ -46,28 +44,34 @@ export class ExtractionAgent {
       });
 
       console.log('[DEBUG] Successfully extracted tutorial spec');
-      
-      return result.object as TutorialSpec;
+
+      console.log('[DEBUG] Result:', result.object);
+      return {
+        spec: result.object as TutorialSpec,
+        prompt,
+      };
     } catch (error) {
       console.error('[ERROR] Failed to extract steps:', error);
       
       // Return empty spec on error (will be caught by validation)
       return {
-        steps: [],
-        metadata: {
-          title: this.tutorialTitle || 'Tutorial',
+        spec: {
+          steps: [],
+          metadata: {
+            title: this.tutorialTitle || 'Tutorial',
+          },
         },
+        prompt,
       };
     }
   }
 
-  private buildPrompt(tutorial: TutorialInput, priorFailures: FailureDossier[]): string {
+  buildPrompt(tutorial: TutorialInput, priorFailures: FailureDossier[]): string {
     const tutorialContent = tutorial.files
       .map(file => `## ${file.path}\n\n${file.contents}`)
       .join('\n\n---\n\n');
 
     let prompt = `${this.promptDoc}\n\n`;
-
     if (priorFailures.length > 0) {
       prompt += `\n## Previous Failures to Avoid\n\n`;
       priorFailures.forEach((failure, idx) => {
@@ -86,6 +90,8 @@ export class ExtractionAgent {
       prompt += `\nPlease carefully review these failures and ensure your extraction avoids these issues.\n\n`;
     }
 
+    // console.log('[DEBUG] Prompt without tutorial content:', prompt);
+
     prompt += `\n## Tutorial Content\n\n${tutorialContent}\n\n`;
     prompt += `\n## Task\n\nExtract executable steps from the tutorial content above and generate a valid TutorialSpec JSON object following the schema and guidelines provided.`;
 
@@ -94,7 +100,7 @@ export class ExtractionAgent {
 
   private loadPromptDoc(): string {
     const here = fileURLToPath(new URL('.', import.meta.url));
-    const promptPath = resolve(here, '../prompt-steps-extraction.md');
+    const promptPath = resolve(here, '../../prompt-steps-extraction.md');
     return existsSync(promptPath) ? readFileSync(promptPath, 'utf-8') : '';
   }
 

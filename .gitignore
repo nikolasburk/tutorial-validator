@@ -41,3 +41,6 @@ coverage/
 tmp/
 temp/
 
+# Debug files
+debug/
+

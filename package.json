@@ -8,11 +8,15 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "clean": "rm -rf node_modules packages/*/node_modules && pnpm install && pnpm -r clean"
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist && pnpm install"
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
+    "@types/js-yaml": "^4.0.9",
     "typescript": "^5.9.3",
     "tsx": "^4.20.6"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
   }
 }
