@@ -26,7 +26,7 @@ export class LocalSandbox implements Sandbox {
 
   constructor(tutorialId?: string, baseDir?: string) {
     // Use tutorial ID or generate a UUID
-    this.tutorialId = tutorialId || randomUUID();
+    this.tutorialId = tutorialId ? tutorialId.replace(/ /g, '-') : randomUUID();
     
     // Determine workspace root
     const workspaceBase = baseDir || process.env.TUTORIAL_WORKSPACE_ROOT || '/tmp';

@@ -24,12 +24,15 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^24.9.2",
+    "@types/dockerode": "^3.3.45",
     "@types/js-yaml": "^4.0.9",
-    "typescript": "^5.9.3",
-    "tsx": "^4.20.6"
+    "@types/node": "^24.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   },
-  "dependencies": {},
+  "dependencies": {
+    "dockerode": "^4.0.9"
+  },
   "optionalDependencies": {
     "playwright": "^1.40.0"
   }
