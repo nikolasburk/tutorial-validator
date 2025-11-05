@@ -79,3 +79,4 @@ export interface Sandbox {
 }
 
 export * from './local.js';
+export * from './docker.js';

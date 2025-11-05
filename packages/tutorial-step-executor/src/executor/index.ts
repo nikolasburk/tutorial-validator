@@ -14,6 +14,7 @@ import type {
 } from '../dsl/index.js';
 import type { Sandbox } from '../sandbox/index.js';
 import { LocalSandbox } from '../sandbox/local.js';
+import { DockerSandbox } from '../sandbox/docker.js';
 import { resolve } from 'path';
 
 /**
@@ -306,7 +307,7 @@ export class TutorialExecutor {
   ): Promise<StepResult> {
 
     // Check if we're in a Docker environment or local
-    const isDocker = false; // this.sandbox instanceof DockerSandbox;
+    const isDocker = this.sandbox instanceof DockerSandbox;
     
     if (isDocker) {
       // Docker sandbox: Playwright is pre-installed in the image
@@ -475,7 +476,7 @@ export class TutorialExecutor {
    */
   private async executeBrowserActionStep(step: BrowserActionStep): Promise<StepResult> {
     // Check if we're in a Docker environment or local
-    const isDocker = false; // this.sandbox instanceof DockerSandbox;
+    const isDocker = this.sandbox instanceof DockerSandbox;
     
     if (isDocker) {
       // Docker sandbox: Playwright is pre-installed in the image

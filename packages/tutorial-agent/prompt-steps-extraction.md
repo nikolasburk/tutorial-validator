@@ -2,7 +2,7 @@
 
 ## Overview
 
-You are extracting executable tutorial steps from MDX/MD tutorial files and converting them into a structured YAML format that follows the tutorial validator schema. The output must be valid YAML that can be executed deterministically.
+You are extracting executable tutorial steps from MDX/MD tutorial files and converting them into a structured YAML format that follows the tutorial validator schema. The output must be valid YAML that can be executed deterministically. Your goal is to read the tutorial very _carefully_ from start to finish and pick up anything that could be interpreted as an instruction (most obviously wordings written in imperative form, but also things like "let's now do X", "we will now do Y", ...).
 
 ## Core Rules (CRITICAL - Read Carefully)
 

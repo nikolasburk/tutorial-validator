@@ -5,6 +5,7 @@ import { resolve, join, extname, basename } from 'path';
 import type { FailureDossier, ExecutionFailureDossier, TutorialInput } from './shared/index.js';
 import type { TutorialSpec } from '@tutorial-validator/step-executor';
 import { TutorialSpecSchema, TutorialExecutor } from '@tutorial-validator/step-executor';
+import { DockerSandbox } from '@tutorial-validator/step-executor';
 import type { StepResult } from '@tutorial-validator/step-executor';
 import { ExtractionAgent } from './extraction/index.js';
 import yaml from 'js-yaml';
@@ -15,7 +16,7 @@ async function main() {
   const args = process.argv.slice(2);
   const tutorialPath = args.find(a => !a.startsWith('-'));
   if (!tutorialPath) {
-    console.error('Usage: tutorial-validator <tutorial.(md|mdx)|dir> [--max-iters 3] [--keep-workspace] [--debug-screenshots] [--out steps.yml] [--debugFiles]');
+    console.error('Usage: tutorial-validator <tutorial.(md|mdx)|dir> [--max-iters 3] [--keep-workspace] [--debug-screenshots] [--out steps.yml] [--debugFiles] [--docker] [--docker-image <name>] [--docker-copy-files]');
     process.exit(1);
   }
 
@@ -27,6 +28,12 @@ async function main() {
   const maxIters = getNumericFlag(args, ['--max-iters', '--maxIters'], 3);
   const outFile = getStringFlag(args, '--out', '');
   const execVerbose = args.includes('--executor-verbose') || args.includes('-v');
+  const useDocker = args.includes('--docker') || args.includes('-d');
+  const dockerImageIndex = args.findIndex(arg => arg === '--docker-image');
+  const dockerImage = dockerImageIndex >= 0 && args[dockerImageIndex + 1] 
+    ? args[dockerImageIndex + 1] 
+    : undefined;
+  const dockerCopyFiles = args.includes('--docker-copy-files');
 
   console.log('[DEBUG] Configuration:');
   console.log(`[DEBUG]   - keepWorkspace: ${keepWorkspace}`);
@@ -35,6 +42,11 @@ async function main() {
   console.log(`[DEBUG]   - maxIters: ${maxIters}`);
   console.log(`[DEBUG]   - outFile: ${outFile || '(none)'}`);
   console.log(`[DEBUG]   - execVerbose: ${execVerbose}`);
+  console.log(`[DEBUG]   - useDocker: ${useDocker}`);
+  if (useDocker) {
+    console.log(`[DEBUG]   - dockerImage: ${dockerImage || 'tutorial-validator:latest'}`);
+    console.log(`[DEBUG]   - dockerCopyFiles: ${dockerCopyFiles}`);
+  }
 
   console.log('[DEBUG] Loading tutorial input...');
   const tutorial = loadTutorialInput(tutorialPath);
@@ -143,7 +155,16 @@ async function main() {
 
     console.log('[DEBUG] Initializing TutorialExecutor...');
     const startExecutorInit = Date.now();
-    const executor = new TutorialExecutor(spec, undefined, { debugScreenshots });
+    
+    // Create sandbox based on mode
+    const sandbox = useDocker
+      ? new DockerSandbox(spec.metadata?.title, {
+          imageName: dockerImage,
+          useVolumeMount: !dockerCopyFiles,
+        })
+      : undefined;
+    
+    const executor = new TutorialExecutor(spec, sandbox, { debugScreenshots });
     const executorInitDuration = Date.now() - startExecutorInit;
     console.log(`[DEBUG] ⏱️  Executor initialization: ${executorInitDuration}ms`);
 

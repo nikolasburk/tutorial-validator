@@ -15,6 +15,7 @@ import type { TutorialSpec } from './dsl/index.js';
 import { z } from 'zod';
 import { ZodError } from 'zod';
 import { TutorialExecutor } from './executor/index.js';
+import { DockerSandbox } from './sandbox/docker.js';
 
 function parseYamlFile(filePath: string): unknown {
   console.log(`[DEBUG] Reading YAML file: ${filePath}`);
@@ -112,6 +113,12 @@ async function main() {
   const keepWorkspace = args.includes('--keep-workspace') || args.includes('-k');
   const verbose = args.includes('--verbose') || args.includes('-v');
   const debugScreenshots = args.includes('--screenshots') || args.includes('--debug-screenshots');
+  const useDocker = args.includes('--docker') || args.includes('-d');
+  const dockerImageIndex = args.findIndex(arg => arg === '--docker-image');
+  const dockerImage = dockerImageIndex >= 0 && args[dockerImageIndex + 1] 
+    ? args[dockerImageIndex + 1] 
+    : undefined;
+  const dockerCopyFiles = args.includes('--docker-copy-files');
   const yamlFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
 
   if (!yamlFile) {
@@ -121,6 +128,9 @@ async function main() {
     console.error('  --keep-workspace, -k    Keep workspace after execution (for debugging)');
     console.error('  --verbose, -v          Show detailed debug output');
     console.error('  --screenshots          Automatically save screenshots after browser steps');
+    console.error('  --docker, -d          Execute steps in Docker container (default: local)');
+    console.error('  --docker-image <name>  Use custom Docker image (default: tutorial-validator:latest)');
+    console.error('  --docker-copy-files    Use file copy mode instead of volume mount (for better isolation)');
     process.exit(1);
   }
 
@@ -128,6 +138,11 @@ async function main() {
     console.log(`[DEBUG] YAML file: ${yamlFile}`);
     console.log(`[DEBUG] Keep workspace: ${keepWorkspace}`);
     console.log(`[DEBUG] Debug screenshots: ${debugScreenshots}`);
+    console.log(`[DEBUG] Use Docker: ${useDocker}`);
+    if (useDocker) {
+      console.log(`[DEBUG] Docker image: ${dockerImage || 'tutorial-validator:latest'}`);
+      console.log(`[DEBUG] Docker file mode: ${dockerCopyFiles ? 'copy' : 'volume mount'}`);
+    }
   }
 
   // Parse and validate tutorial spec
@@ -149,9 +164,17 @@ async function main() {
   console.log(`  Step Types: ${[...new Set(tutorialSpec.steps.map(s => s.type))].join(', ')}`);
 
   // Execute tutorial
-  console.log('\n[INFO] Executing tutorial steps...\n');
+  console.log(`\n[INFO] Executing tutorial steps ${useDocker ? 'with Docker' : 'locally'} ...\n`);
   
-  const executor = new TutorialExecutor(tutorialSpec, undefined, { debugScreenshots });
+  // Create sandbox based on mode
+  const sandbox = useDocker
+    ? new DockerSandbox(tutorialSpec.metadata?.title, {
+        imageName: dockerImage,
+        useVolumeMount: !dockerCopyFiles,
+      })
+    : undefined;
+  
+  const executor = new TutorialExecutor(tutorialSpec, sandbox, { debugScreenshots });
   
   try {
     const result = await executor.execute();
@@ -169,7 +192,7 @@ async function main() {
       const status = stepResult.success ? 'PASS' : 'FAIL';
       
       console.log(`${icon} Step ${stepResult.stepNumber}: ${step?.description || stepResult.stepId} [${status}]`);
-      
+       
       if (!stepResult.success && stepResult.error) {
         console.log(`   Error: ${stepResult.error}`);
       }
