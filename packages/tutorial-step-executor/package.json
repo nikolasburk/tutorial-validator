@@ -18,7 +18,10 @@
     "build": "tsc",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet\""
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -28,7 +31,8 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "workspace:*"
   },
   "dependencies": {
     "dockerode": "^4.0.9"
