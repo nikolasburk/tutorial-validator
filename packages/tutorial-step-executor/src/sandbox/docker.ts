@@ -11,6 +11,8 @@ import { resolve, dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import type { FileChange } from '../dsl/index.js';
 import type { Sandbox, CommandResult } from './index.js';
+import { applyFileChangeToContents } from './fileChangeUtils.js';
+import { resolveWorkspacePath } from './pathUtils.js';
 
 /**
  * Docker sandbox that executes commands in a Docker container
@@ -248,7 +250,7 @@ export class DockerSandbox implements Sandbox {
   async readFile(path: string): Promise<string> {
     if (this.useVolumeMount) {
       // Read from host filesystem
-      const fullPath = this.resolvePath(path);
+      const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
       return await fs.readFile(fullPath, 'utf-8');
     } else {
       // Read from container
@@ -285,7 +287,7 @@ export class DockerSandbox implements Sandbox {
     if (this.useVolumeMount) {
       // Check on host filesystem
       try {
-        const fullPath = this.resolvePath(path);
+        const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
         await fs.access(fullPath);
         return true;
       } catch {
@@ -306,7 +308,7 @@ export class DockerSandbox implements Sandbox {
   async writeFile(path: string, contents: string): Promise<void> {
     if (this.useVolumeMount) {
       // Write to host filesystem
-      const fullPath = this.resolvePath(path);
+      const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
       await fs.mkdir(dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, contents, 'utf-8');
     } else {
@@ -333,136 +335,26 @@ export class DockerSandbox implements Sandbox {
   }
 
   async applyFileChange(change: FileChange): Promise<void> {
-    // For file changes, we can reuse the logic from LocalSandbox
-    // but adapt it for Docker. Since applyFileChange is complex,
-    // we'll read the file, apply changes, and write back.
-
     if (change.type === 'replace') {
       await this.writeFile(change.path, change.contents);
-    } else if (change.type === 'diff') {
-      let contents = '';
-      if (await this.fileExists(change.path)) {
-        contents = await this.readFile(change.path);
-      }
-
-      const lines = contents.split('\n');
-
-      if (change.removeLines) {
-        const { start, end } = change.removeLines;
-        lines.splice(start, end - start + 1);
-      }
-
-      if (change.insertLines) {
-        const { at, lines: linesToInsert } = change.insertLines;
-        lines.splice(at, 0, ...linesToInsert);
-      }
-
-      if (change.findReplace) {
-        const { find, replace } = change.findReplace;
-        contents = contents.replace(find, replace);
-        await this.writeFile(change.path, contents);
-        return;
-      }
-
-      await this.writeFile(change.path, lines.join('\n'));
-    } else if (change.type === 'context') {
-      let contents = '';
-      if (await this.fileExists(change.path)) {
-        contents = await this.readFile(change.path);
-      }
-
-      const lines = contents.split('\n');
-      const pattern = change.searchPattern;
-      let foundIndex = -1;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(pattern)) {
-          foundIndex = i;
-          break;
-        }
-      }
-
-      if (foundIndex === -1) {
-        throw new Error(`Search pattern "${pattern}" not found in file ${change.path}`);
-      }
-
-      if (change.action === 'before') {
-        lines.splice(foundIndex, 0, change.content);
-      } else if (change.action === 'after') {
-        const isJsonFile = change.path.endsWith('.json');
-        if (isJsonFile && foundIndex >= 0 && foundIndex < lines.length) {
-          const matchedLine = lines[foundIndex];
-          const trimmedLine = matchedLine.trim();
-          
-          if (
-            trimmedLine.length > 0 &&
-            !trimmedLine.endsWith(',') &&
-            !trimmedLine.endsWith('{') &&
-            !trimmedLine.endsWith('[') &&
-            !trimmedLine.endsWith('}') &&
-            !trimmedLine.endsWith(']')
-          ) {
-            const insertedContent = change.content.trim();
-            if (insertedContent.startsWith('"')) {
-              lines[foundIndex] = matchedLine.replace(/([^,])$/, '$1,');
-            }
-          }
-          
-          let insertedContent = change.content;
-          const trimmedInserted = insertedContent.trim();
-          
-          let hasMoreProperties = false;
-          let inSameObject = true;
-          let braceDepth = 0;
-          
-          for (let i = 0; i <= foundIndex; i++) {
-            const line = lines[i];
-            for (const char of line) {
-              if (char === '{') braceDepth++;
-              if (char === '}') braceDepth--;
-            }
-          }
-          
-          for (let j = foundIndex + 1; j < lines.length; j++) {
-            const nextLine = lines[j];
-            const trimmedNext = nextLine.trim();
-            
-            for (const char of nextLine) {
-              if (char === '{') braceDepth++;
-              if (char === '}') braceDepth--;
-            }
-            
-            if (trimmedNext.length === 0) continue;
-            
-            if (braceDepth < 0) {
-              inSameObject = false;
-              break;
-            }
-            
-            if (trimmedNext.startsWith('"') && braceDepth >= 0) {
-              hasMoreProperties = true;
-              break;
-            }
-            
-            if (trimmedNext === '}' || trimmedNext.startsWith('}')) {
-              break;
-            }
-          }
-          
-          if (!hasMoreProperties && trimmedInserted.endsWith(',')) {
-            insertedContent = insertedContent.replace(/,\s*$/, '');
-          }
-          
-          lines.splice(foundIndex + 1, 0, insertedContent);
-        } else {
-          lines.splice(foundIndex + 1, 0, change.content);
-        }
-      } else if (change.action === 'replace') {
-        lines[foundIndex] = change.content;
-      }
-
-      await this.writeFile(change.path, lines.join('\n'));
+      return;
     }
+
+    // Read existing file if it exists
+    let contents = '';
+    if (await this.fileExists(change.path)) {
+      contents = await this.readFile(change.path);
+    }
+
+    // Apply transformation (pure function)
+    const modifiedContents = applyFileChangeToContents(
+      contents,
+      change,
+      change.path
+    );
+
+    // Write back
+    await this.writeFile(change.path, modifiedContents);
   }
 
   async cleanup(keepWorkspace?: boolean): Promise<void> {
@@ -498,11 +390,5 @@ export class DockerSandbox implements Sandbox {
     }
   }
 
-  private resolvePath(path: string): string {
-    if (path.startsWith('/')) {
-      return path;
-    }
-    return resolve(this.workspaceRoot, path);
-  }
 }
 

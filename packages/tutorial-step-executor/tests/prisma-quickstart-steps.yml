@@ -1,0 +1,439 @@
+# yaml-language-server: $schema=../../packages/tutorial-step-executor/src/dsl/schema.json
+
+metadata:
+  title: "Prisma ORM Quickstart with SQLite"
+  description: "Get started with Prisma ORM using TypeScript and SQLite. Learn data modeling, migrations, and querying."
+  version: "1.0.0"
+
+prerequisites:
+  commands:
+    - "mkdir"
+    - "cd"
+    - "npm"
+    - "npx"
+    - "touch"
+  envVars: []
+  versions:
+    node: ">=16.13.0"
+
+workingDirectory: ""
+
+steps:
+  # Section 1: Create TypeScript project and set up Prisma ORM
+  
+  - id: "step-1-create-project-dir"
+    type: "run-command"
+    stepNumber: 1
+    description: "Create hello-prisma project directory"
+    command: "mkdir hello-prisma"
+
+  - id: "step-2-validate-dir-created"
+    type: "validate"
+    stepNumber: 2
+    description: "Verify hello-prisma directory was created"
+    validation:
+      type: "cli-output"
+      command: "ls"
+      check:
+        contains: "hello-prisma"
+
+  - id: "step-3-navigate-to-project"
+    type: "run-command"
+    stepNumber: 3
+    description: "Navigate into hello-prisma directory"
+    command: "cd hello-prisma"
+
+  - id: "step-4-validate-location"
+    type: "validate"
+    stepNumber: 4
+    description: "Verify current directory is hello-prisma"
+    validation:
+      type: "cli-output"
+      command: "pwd"
+      check:
+        matches: ".*/hello-prisma$"
+
+  - id: "step-5-init-npm"
+    type: "run-command"
+    stepNumber: 5
+    description: "Initialize npm project with default settings"
+    command: "npm init -y"
+
+  - id: "step-6-install-typescript-deps"
+    type: "run-command"
+    stepNumber: 6
+    description: "Install TypeScript and related dependencies"
+    command: "npm install typescript tsx @types/node --save-dev"
+
+  - id: "step-7-validate-package-json"
+    type: "validate"
+    stepNumber: 7
+    description: "Verify package.json was created"
+    validation:
+      type: "file-contents"
+      path: "package.json"
+      check:
+        exists: true
+
+  - id: "step-8-init-typescript"
+    type: "run-command"
+    stepNumber: 8
+    description: "Initialize TypeScript configuration"
+    command: "npx tsc --init"
+
+  - id: "step-9-validate-tsconfig"
+    type: "validate"
+    stepNumber: 9
+    description: "Verify tsconfig.json was created"
+    validation:
+      type: "file-contents"
+      path: "tsconfig.json"
+      check:
+        exists: true
+
+  - id: "step-10-install-prisma-cli"
+    type: "run-command"
+    stepNumber: 10
+    description: "Install Prisma CLI as dev dependency"
+    command: "npm install prisma --save-dev"
+
+  - id: "step-11-prisma-init"
+    type: "run-command"
+    stepNumber: 11
+    description: "Initialize Prisma with SQLite and custom output directory"
+    command: "npx prisma init --datasource-provider sqlite --output ../generated/prisma"
+
+  - id: "step-12-validate-prisma-schema"
+    type: "validate"
+    stepNumber: 12
+    description: "Verify prisma/schema.prisma file was created"
+    validation:
+      type: "file-contents"
+      path: "prisma/schema.prisma"
+      check:
+        exists: true
+
+  - id: "step-13-validate-env-file"
+    type: "validate"
+    stepNumber: 13
+    description: "Verify .env file was created"
+    validation:
+      type: "file-contents"
+      path: ".env"
+      check:
+        exists: true
+
+  # Section 2: Model data in Prisma schema
+
+  - id: "step-14-add-user-model"
+    type: "change-file"
+    stepNumber: 14
+    description: "Add User model to schema.prisma"
+    change:
+      type: "context"
+      path: "prisma/schema.prisma"
+      searchPattern: |
+        datasource db {
+          provider = "sqlite"
+          url      = env("DATABASE_URL")
+        }
+      action: "after"
+      content: |
+        
+        model User {
+          id    Int     @id @default(autoincrement())
+          email String  @unique
+          name  String?
+          posts Post[]
+        }
+
+  - id: "step-15-add-post-model"
+    type: "change-file"
+    stepNumber: 15
+    description: "Add Post model to schema.prisma"
+    change:
+      type: "context"
+      path: "prisma/schema.prisma"
+      searchPattern: |
+        model User {
+          id    Int     @id @default(autoincrement())
+          email String  @unique
+          name  String?
+          posts Post[]
+        }
+      action: "after"
+      content: |
+        
+        model Post {
+          id        Int     @id @default(autoincrement())
+          title     String
+          content   String?
+          published Boolean @default(false)
+          author    User    @relation(fields: [authorId], references: [id])
+          authorId  Int
+        }
+
+  - id: "step-16-validate-models"
+    type: "validate"
+    stepNumber: 16
+    description: "Verify User model exists in schema"
+    validation:
+      type: "file-contents"
+      path: "prisma/schema.prisma"
+      check:
+        contains: "model User"
+
+  # Section 3: Run migration
+
+  - id: "step-17-prisma-migrate"
+    type: "run-command"
+    stepNumber: 17
+    description: "Run Prisma migration to create database tables"
+    command: "npx prisma migrate dev --name init"
+    expectedExitCode: 1
+
+  - id: "step-18-validate-migration-dir"
+    type: "validate"
+    stepNumber: 18
+    description: "Verify migrations directory was created"
+    validation:
+      type: "file-contents"
+      path: "prisma/migrations"
+      check:
+        exists: true
+
+  - id: "step-19-validate-db-file"
+    type: "validate"
+    stepNumber: 19
+    description: "Verify SQLite database file was created"
+    validation:
+      type: "file-contents"
+      path: "prisma/dev.db"
+      check:
+        exists: true
+
+  # Section 4: Install Prisma Client
+
+  - id: "step-20-install-prisma-client"
+    type: "run-command"
+    stepNumber: 20
+    description: "Install @prisma/client package"
+    command: "npm install @prisma/client"
+
+  - id: "step-21-create-script-file"
+    type: "run-command"
+    stepNumber: 21
+    description: "Create script.ts file"
+    command: "touch script.ts"
+
+  - id: "step-22-validate-script-file"
+    type: "validate"
+    stepNumber: 22
+    description: "Verify script.ts was created"
+    validation:
+      type: "file-contents"
+      path: "script.ts"
+      check:
+        exists: true
+
+  - id: "step-23-add-boilerplate"
+    type: "change-file"
+    stepNumber: 23
+    description: "Add boilerplate code to script.ts"
+    change:
+      type: "replace"
+      path: "script.ts"
+      contents: |
+        import { PrismaClient } from './generated/prisma'
+
+        const prisma = new PrismaClient()
+
+        async function main() {
+          // ... you will write your Prisma Client queries here
+        }
+
+        main()
+          .then(async () => {
+            await prisma.$disconnect()
+          })
+          .catch(async (e) => {
+            console.error(e)
+            await prisma.$disconnect()
+            process.exit(1)
+          })
+
+  # Section 4.1: Create a new User record
+
+  - id: "step-24-add-create-user-query"
+    type: "change-file"
+    stepNumber: 24
+    description: "Add query to create a new User record"
+    change:
+      type: "context"
+      path: "script.ts"
+      searchPattern: "  // ... you will write your Prisma Client queries here"
+      action: "replace"
+      content: |
+          const user = await prisma.user.create({
+            data: {
+              name: 'Alice',
+              email: 'alice@prisma.io',
+            },
+          })
+          console.log(user)
+
+  - id: "step-25-run-create-user"
+    type: "run-command"
+    stepNumber: 25
+    description: "Execute script to create Alice user"
+    command: "npx tsx script.ts"
+
+  - id: "step-26-validate-user-created"
+    type: "validate"
+    stepNumber: 26
+    description: "Verify Alice user was created in output"
+    validation:
+      type: "cli-output"
+      command: "npx tsx script.ts"
+      check:
+        contains: "alice@prisma.io"
+
+  # Section 4.2: Retrieve all User records
+
+  - id: "step-27-update-to-findmany"
+    type: "change-file"
+    stepNumber: 27
+    description: "Replace create query with findMany query"
+    change:
+      type: "context"
+      path: "script.ts"
+      searchPattern: |
+          const user = await prisma.user.create({
+            data: {
+              name: 'Alice',
+              email: 'alice@prisma.io',
+            },
+          })
+          console.log(user)
+      action: "replace"
+      content: |
+          const users = await prisma.user.findMany()
+          console.log(users)
+
+  - id: "step-28-run-findmany"
+    type: "run-command"
+    stepNumber: 28
+    description: "Execute script to retrieve all users"
+    command: "npx tsx script.ts"
+
+  - id: "step-29-validate-findmany-output"
+    type: "validate"
+    stepNumber: 29
+    description: "Verify findMany returns Alice in array"
+    validation:
+      type: "cli-output"
+      command: "npx tsx script.ts"
+      check:
+        contains: "Alice"
+
+  # Section 4.3: Explore relation queries
+
+  - id: "step-30-add-nested-create"
+    type: "change-file"
+    stepNumber: 30
+    description: "Add nested write query to create User with Posts"
+    change:
+      type: "context"
+      path: "script.ts"
+      searchPattern: |
+          const users = await prisma.user.findMany()
+          console.log(users)
+      action: "replace"
+      content: |
+          const user = await prisma.user.create({
+            data: {
+              name: 'Bob',
+              email: 'bob@prisma.io',
+              posts: {
+                create: [
+                  {
+                    title: 'Hello World',
+                    published: true
+                  },
+                  {
+                    title: 'My second post',
+                    content: 'This is still a draft'
+                  }
+                ],
+              },
+            },
+          })
+          console.log(user)
+
+  - id: "step-31-run-nested-create"
+    type: "run-command"
+    stepNumber: 31
+    description: "Execute script to create Bob with posts"
+    command: "npx tsx script.ts"
+
+  - id: "step-32-validate-bob-created"
+    type: "validate"
+    stepNumber: 32
+    description: "Verify Bob user was created"
+    validation:
+      type: "cli-output"
+      command: "npx tsx script.ts"
+      check:
+        contains: "bob@prisma.io"
+
+  - id: "step-33-add-include-query"
+    type: "change-file"
+    stepNumber: 33
+    description: "Add findMany query with include to retrieve users with posts"
+    change:
+      type: "context"
+      path: "script.ts"
+      searchPattern: |
+          const user = await prisma.user.create({
+            data: {
+              name: 'Bob',
+              email: 'bob@prisma.io',
+              posts: {
+                create: [
+                  {
+                    title: 'Hello World',
+                    published: true
+                  },
+                  {
+                    title: 'My second post',
+                    content: 'This is still a draft'
+                  }
+                ],
+              },
+            },
+          })
+          console.log(user)
+      action: "replace"
+      content: |
+          const usersWithPosts = await prisma.user.findMany({
+            include: {
+              posts: true,
+            },
+          })
+          console.dir(usersWithPosts, { depth: null })
+
+  - id: "step-34-run-include-query"
+    type: "run-command"
+    stepNumber: 34
+    description: "Execute script to retrieve users with their posts"
+    command: "npx tsx script.ts"
+
+  - id: "step-35-validate-posts-included"
+    type: "validate"
+    stepNumber: 35
+    description: "Verify output includes posts with Hello World title"
+    validation:
+      type: "cli-output"
+      command: "npx tsx script.ts"
+      check:
+        contains: "Hello World"

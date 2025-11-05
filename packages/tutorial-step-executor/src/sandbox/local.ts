@@ -12,6 +12,8 @@ import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import type { FileChange } from '../dsl/index.js';
 import type { Sandbox, CommandResult } from './index.js';
+import { applyFileChangeToContents } from './fileChangeUtils.js';
+import { resolveWorkspacePath } from './pathUtils.js';
 
 const execAsync = promisify(exec);
 
@@ -180,13 +182,13 @@ export class LocalSandbox implements Sandbox {
   }
 
   async readFile(path: string): Promise<string> {
-    const fullPath = this.resolvePath(path);
+    const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
     return await fs.readFile(fullPath, 'utf-8');
   }
 
   async fileExists(path: string): Promise<boolean> {
     try {
-      const fullPath = this.resolvePath(path);
+      const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
       await fs.access(fullPath);
       return true;
     } catch {
@@ -195,7 +197,7 @@ export class LocalSandbox implements Sandbox {
   }
 
   async writeFile(path: string, contents: string): Promise<void> {
-    const fullPath = this.resolvePath(path);
+    const fullPath = resolveWorkspacePath(path, this.workspaceRoot);
     // Ensure parent directory exists
     await fs.mkdir(dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, contents, 'utf-8');
@@ -204,161 +206,24 @@ export class LocalSandbox implements Sandbox {
   async applyFileChange(change: FileChange): Promise<void> {
     if (change.type === 'replace') {
       await this.writeFile(change.path, change.contents);
-    } else if (change.type === 'diff') {
-      const fullPath = this.resolvePath(change.path);
-      let contents = '';
-
-      // Read existing file if it exists
-      try {
-        contents = await fs.readFile(fullPath, 'utf-8');
-      } catch {
-        // File doesn't exist, start with empty content
-      }
-
-      const lines = contents.split('\n');
-
-      // Remove lines if specified
-      if (change.removeLines) {
-        const { start, end } = change.removeLines;
-        lines.splice(start, end - start + 1);
-      }
-
-      // Insert lines if specified
-      if (change.insertLines) {
-        const { at, lines: linesToInsert } = change.insertLines;
-        lines.splice(at, 0, ...linesToInsert);
-      }
-
-      // Find and replace if specified
-      if (change.findReplace) {
-        const { find, replace } = change.findReplace;
-        contents = contents.replace(find, replace);
-        await this.writeFile(change.path, contents);
-        return;
-      }
-
-      // Write the modified content
-      await this.writeFile(change.path, lines.join('\n'));
-    } else if (change.type === 'context') {
-      const fullPath = this.resolvePath(change.path);
-      let contents = '';
-
-      // Read existing file
-      try {
-        contents = await fs.readFile(fullPath, 'utf-8');
-      } catch {
-        // File doesn't exist, start with empty content
-      }
-
-      const lines = contents.split('\n');
-      const pattern = change.searchPattern;
-      let foundIndex = -1;
-
-      // Find the line matching the search pattern
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes(pattern)) {
-          foundIndex = i;
-          break;
-        }
-      }
-
-      if (foundIndex === -1) {
-        throw new Error(`Search pattern "${pattern}" not found in file ${change.path}`);
-      }
-
-      // Apply the action
-      if (change.action === 'before') {
-        lines.splice(foundIndex, 0, change.content);
-      } else if (change.action === 'after') {
-        // For JSON files, handle comma requirements properly
-        const isJsonFile = change.path.endsWith('.json');
-        if (isJsonFile && foundIndex >= 0 && foundIndex < lines.length) {
-          const matchedLine = lines[foundIndex];
-          const trimmedLine = matchedLine.trim();
-          
-          // Step 1: Ensure the matched line has a comma if it's not the last property
-          if (
-            trimmedLine.length > 0 &&
-            !trimmedLine.endsWith(',') &&
-            !trimmedLine.endsWith('{') &&
-            !trimmedLine.endsWith('[') &&
-            !trimmedLine.endsWith('}') &&
-            !trimmedLine.endsWith(']')
-          ) {
-            // Check if we're inserting a property after this line
-            const insertedContent = change.content.trim();
-            if (insertedContent.startsWith('"')) {
-              // We're adding a property, so the matched line needs a comma
-              lines[foundIndex] = matchedLine.replace(/([^,])$/, '$1,');
-            }
-          }
-          
-          // Step 2: Check if the inserted content will be the last property
-          // and remove trailing comma if so
-          let insertedContent = change.content;
-          const trimmedInserted = insertedContent.trim();
-          
-          // Look ahead to see if there are more properties after what we're inserting
-          let hasMoreProperties = false;
-          let inSameObject = true; // Track if we're still in the same JSON object
-          let braceDepth = 0;
-          
-          // Count braces from the matched line to determine object context
-          for (let i = 0; i <= foundIndex; i++) {
-            const line = lines[i];
-            for (const char of line) {
-              if (char === '{') braceDepth++;
-              if (char === '}') braceDepth--;
-            }
-          }
-          
-          // Check lines after the insertion point
-          for (let j = foundIndex + 1; j < lines.length; j++) {
-            const nextLine = lines[j];
-            const trimmedNext = nextLine.trim();
-            
-            // Update brace depth
-            for (const char of nextLine) {
-              if (char === '{') braceDepth++;
-              if (char === '}') braceDepth--;
-            }
-            
-            if (trimmedNext.length === 0) continue;
-            
-            // If we've closed more braces than opened, we've left the object
-            if (braceDepth < 0) {
-              inSameObject = false;
-              break;
-            }
-            
-            // If we find another property (starts with quote) in the same object
-            if (trimmedNext.startsWith('"') && braceDepth >= 0) {
-              hasMoreProperties = true;
-              break;
-            }
-            
-            // If we find a closing brace before another property
-            if (trimmedNext === '}' || trimmedNext.startsWith('}')) {
-              break;
-            }
-          }
-          
-          // If this is the last property (no more properties found), remove trailing comma
-          if (!hasMoreProperties && trimmedInserted.endsWith(',')) {
-            insertedContent = insertedContent.replace(/,\s*$/, '');
-          }
-          
-          lines.splice(foundIndex + 1, 0, insertedContent);
-        } else {
-          // Non-JSON file or no special handling needed
-          lines.splice(foundIndex + 1, 0, change.content);
-        }
-      } else if (change.action === 'replace') {
-        lines[foundIndex] = change.content;
-      }
-
-      await this.writeFile(change.path, lines.join('\n'));
+      return;
     }
+
+    // Read existing file if it exists
+    let contents = '';
+    if (await this.fileExists(change.path)) {
+      contents = await this.readFile(change.path);
+    }
+
+    // Apply transformation (pure function)
+    const modifiedContents = applyFileChangeToContents(
+      contents,
+      change,
+      change.path
+    );
+
+    // Write back
+    await this.writeFile(change.path, modifiedContents);
   }
 
   async cleanup(keepWorkspace?: boolean): Promise<void> {
@@ -446,14 +311,4 @@ export class LocalSandbox implements Sandbox {
     this.backgroundProcesses = [];
   }
 
-  /**
-   * Resolve a path relative to the workspace root
-   */
-  private resolvePath(path: string): string {
-    // If path is absolute, use it directly (might be outside workspace)
-    if (path.startsWith('/')) {
-      return path;
-    }
-    return resolve(this.workspaceRoot, path);
-  }
 }
